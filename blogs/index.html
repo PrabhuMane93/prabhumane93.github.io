@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blog — Prabhu Mane</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23141413'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  .page-head{
+    padding: 64px 0 40px;
+  }
+  .page-head h1{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 36px;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 12px;
+  }
+  .page-head p{
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 54ch;
+  }
+
+  .post-list{
+    padding: 0 0 64px;
+  }
+  .post-item{
+    display: block;
+    padding: 28px 0;
+    border-top: 1px solid var(--line);
+    text-decoration: none;
+    color: inherit;
+  }
+  .post-list .post-item:last-child{ padding-bottom: 0; }
+  .post-date{
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 8px;
+  }
+  .post-item h2{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 21px;
+    line-height: 1.35;
+    letter-spacing: -0.005em;
+    margin: 0 0 8px;
+    color: var(--ink);
+  }
+  .post-item:hover h2{ text-decoration: underline; }
+  .post-item .dek{
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin: 0;
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="/">Prabhu Mane</a>
+    <div class="navlinks">
+      <a href="/#">Projects</a>
+      <a href="/blogs/" aria-current="page">Blog</a>
+    </div>
+  </div>
+</nav>
+<hr class="rule">
+
+<main class="wrap">
+
+  <section class="page-head">
+    <h1>Blog</h1>
+    <p>[Placeholder dek] — notes on GPU kernels, LLM inference, and whatever else I'm building. Format skeleton only, posts below are dummy.</p>
+  </section>
+
+  <section class="post-list">
+    <a class="post-item" href="sample-post/">
+      <p class="post-date">[Placeholder] Sep 2026</p>
+      <h2>[Placeholder title] The dequant-and-accumulate loop, animated</h2>
+      <p class="dek">[Placeholder dek] — one or two sentences summarizing what the post covers and why it matters.</p>
+    </a>
+    <a class="post-item" href="#">
+      <p class="post-date">[Placeholder] Aug 2026</p>
+      <h2>[Placeholder title] Naive attention from scratch in Metal</h2>
+      <p class="dek">[Placeholder dek] — a second dummy entry to show how the list looks with more than one post.</p>
+    </a>
+    <a class="post-item" href="#">
+      <p class="post-date">[Placeholder] Aug 2026</p>
+      <h2>[Placeholder title] GEMV, tiled and fused</h2>
+      <p class="dek">[Placeholder dek] — a third dummy entry.</p>
+    </a>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>&copy; 2026 Prabhu Mane</p>
+  </div>
+</footer>
+
+</body>
+</html>
