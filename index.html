@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prabhu Mane</title>
+<style>
+  :root{
+    --bg: #faf9f5;
+    --ink: #141413;
+    --ink-soft: #5f5e5b;
+    --ink-faint: #8a8983;
+    --line: #e4e2da;
+    --sans: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+    --serif: Georgia, "Times New Roman", serif;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html{ background: var(--bg); }
+
+  body{
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--serif);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap{
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* nav */
+  nav.top{
+    padding: 40px 0 24px;
+  }
+  nav.top .wrap{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 15px;
+    color: var(--ink);
+    text-decoration: none;
+    letter-spacing: -0.01em;
+  }
+  .navlinks{
+    display: flex;
+    gap: 28px;
+  }
+  .navlinks a{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    text-decoration: none;
+  }
+  .navlinks a:hover{ color: var(--ink); }
+
+  hr.rule{
+    border: none;
+    border-top: 1px solid var(--line);
+    margin: 0;
+  }
+
+  /* hero */
+  .hero{
+    padding: 64px 0 28px;
+  }
+  .hero h1{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 40px;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 14px;
+  }
+  .hero .tagline{
+    font-family: var(--serif);
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0;
+    max-width: 54ch;
+  }
+
+  /* about */
+  .about{
+    padding: 8px 0 40px;
+  }
+  .about p{
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.7;
+    color: var(--ink);
+    margin: 0 0 18px;
+  }
+  .about p:last-child{ margin-bottom: 0; }
+
+  /* quick links */
+  .links{
+    padding: 0 0 56px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .links a{
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    color: var(--ink-faint);
+    transition: color 0.15s;
+  }
+  .links a:hover{ color: var(--ink); }
+  .links svg{
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+  }
+  .links a.mail svg{
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* now / currently */
+  .now{
+    padding: 0 0 56px;
+  }
+  .now h2{
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 16px;
+  }
+  .now ul{
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .now li{
+    font-family: var(--serif);
+    font-size: 16px;
+    line-height: 1.6;
+    color: var(--ink);
+    padding: 10px 0;
+    border-top: 1px solid var(--line);
+  }
+  .now li:first-child{ border-top: none; }
+  .now li .dim{ color: var(--ink-faint); }
+
+  footer{
+    padding: 32px 0 64px;
+  }
+  footer p{
+    font-family: var(--sans);
+    font-size: 13px;
+    color: var(--ink-faint);
+    margin: 0;
+  }
+
+  @media (max-width: 480px){
+    .hero h1{ font-size: 32px; }
+    .hero{ padding-top: 44px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="wrap">
+    <a class="brand" href="/">Prabhu Mane</a>
+    <div class="navlinks">
+      <a href="#">Projects</a>
+      <a href="#">Blog</a>
+    </div>
+  </div>
+</nav>
+<hr class="rule">
+
+<main class="wrap">
+
+  <section class="hero">
+    <h1>Prabhu Mane</h1>
+    <p class="tagline">
+      [Placeholder tagline] — one sentence describing who you are and
+      what you're building right now.
+    </p>
+  </section>
+
+  <section class="about">
+    <p>
+      [Placeholder paragraph — dummy copy]. Lorem ipsum dolor sit amet,
+      consectetur adipiscing elit. This is stand-in text for the About
+      section: a few sentences on background, what you work on, and the
+      kind of problems you like solving. Replace with the real bio once
+      the layout is approved.
+    </p>
+    <p>
+      [Placeholder paragraph two]. Sed do eiusmod tempor incididunt ut
+      labore et dolore magna aliqua — a second short paragraph, e.g. a
+      line on current focus or what you're learning right now.
+    </p>
+  </section>
+
+  <section class="links">
+    <a class="mail" href="mailto:dr.prabhumane@gmail.com" aria-label="Email" title="Email">
+      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
+    </a>
+    <a href="https://github.com/PrabhuMane93" target="_blank" rel="noopener" aria-label="GitHub" title="GitHub">
+      <svg viewBox="0 0 24 24"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.744.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.605-2.665-.303-5.466-1.332-5.466-5.93 0-1.31.469-2.381 1.236-3.221-.124-.303-.535-1.523.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.873.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.803 5.624-5.475 5.921.43.372.823 1.102.823 2.222 0 1.606-.014 2.898-.014 3.293 0 .322.216.694.825.576C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12z"/></svg>
+    </a>
+    <a href="https://x.com/PrabhuMane93" target="_blank" rel="noopener" aria-label="X (Twitter)" title="X">
+      <svg viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    </a>
+    <a href="https://linkedin.com/in/prabhu-mane-b1a71a201" target="_blank" rel="noopener" aria-label="LinkedIn" title="LinkedIn">
+      <svg viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+    </a>
+  </section>
+
+  <section class="now">
+    <h2>Currently</h2>
+    <ul>
+      <li>[Placeholder] — one line on the current project. <span class="dim">Sep 2026</span></li>
+      <li>[Placeholder] — one line on something you're reading or learning. <span class="dim">Sep 2026</span></li>
+      <li>[Placeholder] — one line, another current thread. <span class="dim">Aug 2026</span></li>
+    </ul>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>&copy; 2026 Prabhu Mane</p>
+  </div>
+</footer>
+
+</body>
+</html>
