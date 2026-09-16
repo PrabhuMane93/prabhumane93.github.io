@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanilla Attention, Explained &middot; Prabhu Mane</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23141413'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  /* article shell, wider than the site's normal .wrap so margin notes
+     have room to sit in the right gutter */
+  .article-wrap{
+    max-width: 940px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+  .article-col{
+    max-width: 680px;
+  }
+  nav.top .article-wrap{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* header */
+  .article-header{
+    padding: 56px 0 28px;
+  }
+  .series-label{
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+  .article-header h1{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 34px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin: 0 0 12px;
+  }
+  .article-header .dek{
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0 0 28px;
+  }
+
+  .byline{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .byline .field .label{
+    display: block;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+  }
+  .byline .field .value{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+  }
+
+  /* table of contents */
+  .toc{
+    padding: 28px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .toc .toc-label{
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 12px;
+  }
+  .toc ol{
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .toc li{ margin: 0 0 8px; }
+  .toc a{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .toc a:hover{ border-bottom-color: var(--ink); }
+  .toc .todo{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-faint);
+  }
+  .toc .todo-tag{
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-left: 8px;
+  }
+
+  /* body */
+  .article-body{
+    padding: 40px 0 24px;
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.7;
+  }
+  .article-body h2{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: -0.005em;
+    margin: 44px 0 16px;
+  }
+  .article-body h2:first-child{ margin-top: 0; }
+  .article-body p{ margin: 0 0 20px; }
+  .article-body code{
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 15px;
+    background: var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  .formula{
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 17px;
+    text-align: center;
+    background: var(--line);
+    border-radius: 8px;
+    padding: 22px 20px;
+    margin: 24px 0;
+    color: var(--ink);
+  }
+
+  .math{
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 7px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 25px;
+    color: var(--ink);
+  }
+  .math .var{ font-style: italic; }
+  .math .fn{ font-style: normal; }
+  .math .op{ font-style: normal; }
+  .math sup{ font-size: 0.62em; position: relative; top: -0.6em; }
+  .math sub{ font-size: 0.62em; position: relative; top: 0.3em; }
+
+  .frac{
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 2px;
+    line-height: 1.35;
+  }
+  .frac-num, .frac-den{ padding: 0 3px; }
+  .frac-bar{
+    width: 100%;
+    border-top: 1.5px solid var(--ink);
+    margin: 1px 0;
+  }
+  .math .dim{ color: var(--ink-faint); font-weight: 400; }
+  .math .hl{ color: var(--ink); font-weight: 700; }
+  .frac-bar.dim{ border-top-color: var(--ink-faint); }
+  .frac-bar.hl{ border-top-color: var(--ink); }
+
+  .sum-op{
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    line-height: 1;
+    margin: 0 3px;
+  }
+  .sum-op .sum-top{ font-size: 0.4em; margin-bottom: 1px; white-space: nowrap; }
+  .sum-op .sum-sym{ font-size: 1.5em; line-height: 0.8; }
+  .sum-op .sum-bottom{ font-size: 0.4em; margin-top: 1px; white-space: nowrap; }
+
+  .step-formula-small{
+    text-align: center;
+    padding: 14px 0;
+  }
+  .step-formula-small .math{ font-size: 19px; }
+
+  /* input definitions list */
+  .input-defs{
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 9px 18px;
+    margin: 20px 0 24px;
+    font-family: var(--sans);
+    font-size: 15px;
+  }
+  .input-defs dt{
+    margin: 0;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .input-defs dd{
+    margin: 0;
+    color: var(--ink-soft);
+  }
+
+  /* margin notes: float into the right gutter on wide viewports,
+     collapse to an inline callout on narrow ones */
+  .margin-note{
+    float: right;
+    clear: right;
+    width: 220px;
+    margin: 4px -260px 12px 0;
+    padding-left: 14px;
+    border-left: 2px solid var(--line);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+  .margin-note img{
+    display: block;
+    width: 100%;
+    border-radius: 6px;
+    margin: 0 0 10px;
+  }
+  .margin-note code{
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    background: var(--line);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  .margin-note ul{
+    margin: 0;
+    padding-left: 16px;
+  }
+  .margin-note li{
+    margin: 0 0 10px;
+  }
+  .margin-note li:last-child{ margin-bottom: 0; }
+
+  /* step-by-step derivation cards */
+  .step-card{
+    margin: 18px 0;
+    padding: 22px 24px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .step-label{
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+  .step-formula{
+    text-align: center;
+    padding: 6px 0 18px;
+  }
+  .step-formula .math{ font-size: 22px; }
+  .step-caption{
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    margin: 0;
+    text-align: center;
+  }
+  .step-detail{
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.7;
+    color: var(--ink);
+    text-align: left;
+    margin: 16px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .step-detail:last-child{ margin-bottom: 0; }
+  .step-detail ul{
+    margin: 10px 0 0;
+    padding-left: 20px;
+  }
+  .step-detail li{ margin: 0 0 8px; }
+  .step-detail li:last-child{ margin-bottom: 0; }
+
+  .worked-example{
+    margin: 24px 0;
+    padding: 18px 20px;
+    border-left: 3px solid var(--ink-faint);
+    background: var(--line);
+    border-radius: 0 8px 8px 0;
+  }
+  .worked-example .label{
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+  .worked-example p{
+    font-family: var(--serif);
+    font-size: 15.5px;
+    margin: 0 0 10px;
+  }
+  .worked-example p:last-child{ margin-bottom: 0; }
+  .worked-example code{ background: var(--bg); }
+
+  .coming-next{
+    margin: 40px 0 0;
+    padding: 20px 22px;
+    border: 1px dashed var(--ink-faint);
+    border-radius: 8px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+  .coming-next strong{ color: var(--ink); }
+
+  .back-link{
+    padding: 8px 0 0;
+  }
+  .back-link a{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .back-link a:hover{ color: var(--ink); border-bottom-color: var(--ink); }
+
+  @media (max-width: 980px){
+    .article-header h1{ font-size: 27px; }
+    .margin-note{
+      float: none;
+      width: auto;
+      margin: 16px 0;
+      padding: 10px 14px;
+      border-left: 3px solid var(--line);
+    }
+  }
+  @media (max-width: 560px){
+    .math{ font-size: 19px; gap: 5px; }
+    .step-formula .math{ font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="article-wrap">
+    <a class="brand" href="/">Prabhu Mane</a>
+    <div class="navlinks">
+      <a href="/#">Projects</a>
+      <a href="/blogs/" aria-current="page">Blog</a>
+    </div>
+  </div>
+</nav>
+<hr class="rule">
+
+<main class="article-wrap">
+
+  <header class="article-header article-col">
+    <p class="series-label">Implementing Flash Attention on Metal &middot; Part 1</p>
+    <h1>Vanilla Attention, Explained</h1>
+    <p class="dek">Before tiling and online softmax, the mechanism itself: projecting Q/K/V from a sequence of embeddings, then turning them into a weighted mix of values.</p>
+
+    <div class="byline">
+      <div class="field">
+        <span class="label">Published</span>
+        <span class="value">September 16, 2026</span>
+      </div>
+      <div class="field">
+        <span class="label">Reading time</span>
+        <span class="value">10 mins</span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc article-col">
+    <p class="toc-label">Contents</p>
+    <ol>
+      <li><a href="#formula">1. The attention formula</a></li>
+      <li><span class="todo">2. Projecting Q, K, and V<span class="todo-tag">coming next</span></span></li>
+      <li><span class="todo">3. Raw attention scores: Q·Kᵀ<span class="todo-tag">coming next</span></span></li>
+      <li><span class="todo">4. Softmax and the weighted sum with V<span class="todo-tag">coming next</span></span></li>
+    </ol>
+  </nav>
+
+  <div class="article-body article-col">
+
+    <h2 id="formula">1. The attention formula</h2>
+    <p>
+      Every token in a sequence needs to decide how much to "listen to" every
+      other token before updating its own representation. Attention is the
+      mechanism that does that, and the whole thing collapses into one line:
+    </p>
+
+    <div class="formula">
+      <span class="math">
+        <span class="fn">Attention</span>
+        <span class="op">=</span>
+        <span class="fn">softmax</span><span class="op">(</span>
+        <span class="frac">
+          <span class="frac-num"><span class="var">Q</span><span class="var">K</span><sup>T</sup></span>
+          <span class="frac-bar"></span>
+          <span class="frac-den">&radic;<span class="var">d</span><sub>model</sub></span>
+        </span>
+        <span class="op">)</span><span class="var">V</span>
+      </span>
+    </div>
+
+    <p>
+      The formula takes four inputs: <code>Q</code>, <code>K</code>,
+      <code>V</code>, and <code>d_model</code>.
+    </p>
+
+    <dl class="input-defs">
+      <dt>Q</dt><dd>Query matrix</dd>
+      <dt>K</dt><dd>Key matrix</dd>
+      <dt>V</dt><dd>Value matrix</dd>
+      <dt>d_model</dt><dd>embedding dimension</dd>
+    </dl>
+
+    <aside class="margin-note">
+      <img src="seq_length_by_d_model.jpg" alt="A 5-token sentence, &quot;Attention is all you need,&quot; mapped row by row into a matrix. Each row is one token: Seq_Len rows tall and D_model columns wide.">
+      <code>Seq_Len</code> is how many tokens. <code>d_model</code> is each
+      token's embedding width. Together, <code>X</code> is
+      <code>Seq_Len &times; d_model</code>, one row per token, as shown
+      above.
+    </aside>
+
+    <p>
+      We'll develop intuition for these inputs, and for why the formula is
+      structured this way, later in the blog. For now, let's look at
+      attention as a sequence of four mechanical steps.
+    </p>
+
+    <div class="step-card">
+      <p class="step-label">Step 1</p>
+      <div class="step-formula">
+        <span class="math">
+          <span class="dim fn">Attention</span>
+          <span class="dim op">=</span>
+          <span class="dim fn">softmax</span><span class="dim op">(</span>
+          <span class="frac">
+            <span class="frac-num hl"><span class="var">Q</span><span class="var">K</span><sup>T</sup></span>
+            <span class="frac-bar dim"></span>
+            <span class="frac-den dim">&radic;<span class="var">d</span><sub>model</sub></span>
+          </span>
+          <span class="dim op">)</span><span class="dim var">V</span>
+        </span>
+      </div>
+      <p class="step-caption">Transposing <code>K</code>, then multiplying it by <code>Q</code>.</p>
+      <p class="step-detail">
+        <code>Q</code> and <code>K</code> are both <code>(Seq_Len &times;
+        d_model)</code> matrices, the same shape, since every token gets
+        projected into both a query and a key. Before they can be
+        multiplied, <code>K</code> has to be transposed to
+        <code>(d_model &times; Seq_Len)</code> first. Transposing lines up
+        every token's key vector along columns instead of rows, so
+        multiplying <code>Q</code> by <code>K<sup>T</sup></code> pairs each
+        token's query row against every other token's key column. What
+        comes out, one row and one column per token, is a raw,
+        unnormalized attention score for every token against every other
+        token in the sequence.
+      </p>
+    </div>
+
+    <aside class="margin-note">
+      <ul>
+        <li>In real kernels this scaling step is rarely its own pass. It's
+        usually combined into step 1's matmul, so one dispatch computes
+        <code>Q&middot;K<sup>T</sup></code> and applies the scale at the
+        same time. You'll see this shortly.</li>
+        <li><code>matmul</code> is short for matrix multiplication.</li>
+      </ul>
+    </aside>
+
+    <div class="step-card">
+      <p class="step-label">Step 2</p>
+      <div class="step-formula">
+        <span class="math">
+          <span class="dim fn">Attention</span>
+          <span class="dim op">=</span>
+          <span class="dim fn">softmax</span><span class="dim op">(</span>
+          <span class="frac">
+            <span class="frac-num hl"><span class="var">Q</span><span class="var">K</span><sup>T</sup></span>
+            <span class="frac-bar hl"></span>
+            <span class="frac-den hl">&radic;<span class="var">d</span><sub>model</sub></span>
+          </span>
+          <span class="dim op">)</span><span class="dim var">V</span>
+        </span>
+      </div>
+      <p class="step-caption">Scaling by <code>1/&radic;d_model</code>, and calling the result <code>S</code>.</p>
+      <p class="step-detail">
+        Before the raw scores go into softmax, we stabilize them by
+        dividing every entry by <code>&radic;d_model</code>, for numerical
+        stability. Call this rescaled matrix <code>S</code>.
+      </p>
+    </div>
+
+    <div class="step-card">
+      <p class="step-label">Step 3</p>
+      <div class="step-formula">
+        <span class="math">
+          <span class="dim fn">Attention</span>
+          <span class="dim op">=</span>
+          <span class="hl fn">softmax</span><span class="hl op">(</span>
+          <span class="hl var">S</span>
+          <span class="hl op">)</span><span class="dim var">V</span>
+        </span>
+      </div>
+      <p class="step-caption">Row-wise softmax of <code>S</code>, giving the attention map <code>A</code>.</p>
+      <div class="step-detail">
+        <p>
+          Softmax runs one row at a time, not across the whole matrix. Each
+          row of <code>S</code> holds one token's raw scores against every
+          other token in the sequence, so normalizing that row on its own
+          is what turns it into a distribution over just that token's
+          attention targets. For a single row's entry <code>x<sub>i</sub></code>,
+          softmax is:
+        </p>
+        <div class="step-formula-small">
+          <span class="math">
+            <span class="var">s</span><span class="op">(</span><span class="var">x</span><sub>i</sub><span class="op">)</span>
+            <span class="op">=</span>
+            <span class="frac">
+              <span class="frac-num"><span class="var">e</span><sup><span class="var">x</span><sub>i</sub></sup></span>
+              <span class="frac-bar"></span>
+              <span class="frac-den">
+                <span class="sum-op"><span class="sum-top">Seq_Len</span><span class="sum-sym">&Sigma;</span><span class="sum-bottom">j=1</span></span><span class="var">e</span><sup><span class="var">x</span><sub>j</sub></sup>
+              </span>
+            </span>
+          </span>
+        </div>
+        <p>
+          The numerator exponentiates one entry; the denominator
+          exponentiates and sums every entry in the row, so dividing by it
+          is what forces the row to add up to 1. Applying this does two
+          things:
+        </p>
+        <ul>
+          <li>It rescales the row so every value sums to exactly 1, so the
+          row behaves like a genuine probability distribution instead of a
+          set of arbitrary numbers.</li>
+          <li>It exaggerates the gaps between scores: low values get
+          pushed toward vanishingly small, and high values get pushed
+          toward dominating the row, so a token ends up concentrating its
+          attention on a handful of others rather than spreading it out
+          evenly.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="step-card">
+      <p class="step-label">Step 4</p>
+      <div class="step-formula">
+        <span class="math">
+          <span class="hl fn">Attention</span>
+          <span class="hl op">=</span>
+          <span class="hl var">A</span>
+          <span class="hl op">&middot;</span><span class="hl var">V</span>
+        </span>
+      </div>
+      <p class="step-caption">The final multiplication, <code>A&middot;V</code>, gives the attention output.</p>
+      <p class="step-detail">
+        The row of <code>A</code> for our token tells us how much it
+        relies on every other token in the sequence. To compute our
+        token's new value, we go feature by feature: for a single
+        feature, take that feature's value from every other token, scale
+        each one by how much our token attends to it, and add them all
+        up. Do that across every feature, and you get our token's entire
+        new row. Mechanically, that's the whole step: it's just a
+        matrix-matrix multiplication, <code>A</code> times <code>V</code>.
+      </p>
+    </div>
+
+  </div>
+
+  <div class="article-col back-link">
+    <a href="/blogs/">&larr; Back to all posts</a>
+  </div>
+
+</main>
+
+<footer>
+  <div class="article-wrap">
+    <p>&copy; 2026 Prabhu Mane</p>
+  </div>
+</footer>
+
+</body>
+</html>
