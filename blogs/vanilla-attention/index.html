@@ -74,6 +74,18 @@
     font-size: 14px;
     color: var(--ink);
   }
+  .byline .field .value a{
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .byline .field .value a:hover{ border-bottom-color: var(--ink); }
+
+  .article-body a{
+    color: var(--ink);
+    text-decoration-color: var(--ink-faint);
+  }
+  .article-body a:hover{ text-decoration-color: var(--ink); }
 
   /* table of contents */
   .toc{
@@ -188,6 +200,11 @@
     margin: 24px 0;
     color: var(--ink);
   }
+  .formula.plain{
+    background: none;
+    border-radius: 0;
+    padding: 12px 0;
+  }
 
   .math{
     display: inline-flex;
@@ -297,6 +314,15 @@
     margin: 0 0 10px;
   }
   .margin-note li:last-child{ margin-bottom: 0; }
+  .margin-note p{ margin: 0 0 10px; }
+  .margin-note p:last-child{ margin-bottom: 0; }
+  .margin-note .math{
+    display: flex;
+    font-size: 14px;
+    gap: 3px;
+    margin: 10px 0;
+    color: var(--ink);
+  }
 
   /* step-by-step derivation cards */
   .step-card{
@@ -439,6 +465,10 @@
         <span class="label">Reading time</span>
         <span class="value">10 mins</span>
       </div>
+      <div class="field">
+        <span class="label">Code</span>
+        <span class="value"><a href="https://github.com/PrabhuMane93/metal-llm-kernels/tree/main/attention-kernels/naive-attention">metal-llm-kernels</a></span>
+      </div>
     </div>
   </header>
 
@@ -446,15 +476,8 @@
     <p class="toc-label">Contents</p>
     <ol>
       <li><a href="#formula">1. The attention formula</a></li>
-      <li><span class="todo">2. Projecting Q, K, and V<span class="todo-tag">coming next</span></span></li>
-      <li><span class="todo">3. Raw attention scores: Q·Kᵀ<span class="todo-tag">coming next</span></span></li>
-      <li><span class="todo">4. Softmax and the weighted sum with V<span class="todo-tag">coming next</span></span></li>
-      <li><a href="#kernel-implementation">2. Metal kernel implementation</a>
-        <ol class="toc-sub">
-          <li><a href="#buffer-management">Buffer management</a></li>
-          <li><a href="#qk-scaled-matmul-kernel">qk_scaled_matmul kernel</a></li>
-        </ol>
-      </li>
+      <li><a href="#kernel-implementation">2. Metal kernel implementation</a></li>
+      <li><a href="#results">3. Results</a></li>
     </ol>
   </nav>
 
@@ -912,6 +935,241 @@ for (uint d = 0; d < d_model; d++) {
     </p>
 
     <pre class="code-block"><code>S[i * seq_len + j] = sum * scale;</code></pre>
+
+    <p>
+      That's the whole kernel: one thread, one dot product, one scaled
+      entry of <code>S</code>. Once every thread has done this, we
+      have the full <code>S</code> matrix, and can move on to softmax.
+    </p>
+
+    <h3 id="softmax-kernel">Softmax kernel</h3>
+    <p>
+      This kernel implements Step 3 from above: turning <code>S</code>
+      into a genuine probability distribution, one row at a time. The
+      figure below shows what that does to a single row: the raw
+      scores can be any magnitude or sign, but after softmax,
+      everything is positive, a couple of values dominate, and the
+      row sums to exactly 1.
+    </p>
+
+    <figure id="fig-row-softmax">
+      <svg viewBox="0 0 700 300" style="width: 100%; height: auto; display: block;" role="img" aria-label="The S matrix with one row plucked out, that row's raw scores as bars around zero, and the same row after softmax where two values dominate and the rest are flattened toward zero">
+        <defs>
+          <marker id="smxArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+            <path d="M 0 1 L 9 5 L 0 9 z" fill="#b68235"></path>
+          </marker>
+        </defs>
+
+        <!-- 1. S, with one row plucked out -->
+        <text x="108" y="44" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">S = QK&#7488; &middot; scale</text>
+
+        <text x="108" y="70" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">seq_len = 128</text>
+        <text x="28" y="148" text-anchor="middle" transform="rotate(-90 28 148)" style="font-family: Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">seq_len = 128</text>
+
+        <rect x="40" y="80" width="136" height="136" fill="none" stroke="#a8a3a3"></rect>
+        <g stroke="#bdb8b8" stroke-width="0.8" fill="none">
+          <line x1="59.43" y1="80" x2="59.43" y2="216"></line><line x1="78.86" y1="80" x2="78.86" y2="216"></line>
+          <line x1="98.29" y1="80" x2="98.29" y2="216"></line><line x1="117.71" y1="80" x2="117.71" y2="216"></line>
+          <line x1="137.14" y1="80" x2="137.14" y2="216"></line><line x1="156.57" y1="80" x2="156.57" y2="216"></line>
+          <line x1="40" y1="99.43" x2="176" y2="99.43"></line><line x1="40" y1="118.86" x2="176" y2="118.86"></line>
+          <line x1="40" y1="177.14" x2="176" y2="177.14"></line><line x1="40" y1="196.57" x2="176" y2="196.57"></line>
+        </g>
+        <rect x="40" y="138.29" width="136" height="19.43" fill="#ffe3bf" stroke="#b68235" stroke-width="1.2"></rect>
+        <text x="108" y="240" text-anchor="middle" style="font-family: Georgia, serif; font-size: 12px; fill: #201f1d;">one row = one query</text>
+        <text x="108" y="257" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">its score against all 128 keys</text>
+
+        <g stroke="#c28d41" stroke-width="1">
+          <line x1="176" y1="138.29" x2="232" y2="104"></line>
+          <line x1="176" y1="157.71" x2="232" y2="164"></line>
+        </g>
+
+        <!-- 2. raw scores -->
+        <text x="323" y="44" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">raw scores</text>
+
+        <g fill="none" stroke="#b68235" stroke-width="1">
+          <rect x="232" y="104" width="11" height="60" fill="#ffe3bf"></rect>
+          <rect x="247.6" y="146.5" width="11" height="17.5"></rect>
+          <rect x="263.2" y="164" width="11" height="5.8"></rect>
+          <rect x="278.8" y="123" width="11" height="41"></rect>
+          <rect x="294.4" y="155.2" width="11" height="8.8"></rect>
+          <rect x="310" y="164" width="11" height="21.9"></rect>
+          <rect x="325.6" y="111.4" width="11" height="52.6" fill="#ffe3bf"></rect>
+          <rect x="341.2" y="161.1" width="11" height="2.9"></rect>
+          <rect x="356.8" y="136.3" width="11" height="27.7"></rect>
+          <rect x="372.4" y="164" width="11" height="11.7"></rect>
+          <rect x="388" y="150.9" width="11" height="13.1"></rect>
+          <rect x="403.6" y="131.9" width="11" height="32.1"></rect>
+        </g>
+        <line x1="232" y1="164" x2="418" y2="164" stroke="#605d5d" stroke-width="1"></line>
+        <text x="226" y="167" text-anchor="end" style="font-family: Georgia, serif; font-size: 10.5px; font-feature-settings: 'tnum'; fill: #605d5d;">0</text>
+        <text x="323" y="240" text-anchor="middle" style="font-family: Georgia, serif; font-size: 12px; fill: #201f1d;">any magnitude, any sign</text>
+        <text x="323" y="257" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">12 of the 128 columns shown</text>
+
+        <line x1="438" y1="150" x2="492" y2="150" stroke="#b68235" stroke-width="1" marker-end="url(#smxArrow)"></line>
+        <text x="465" y="141" text-anchor="middle" style="font-family: Georgia, serif; font-style: italic; font-size: 12.5px; fill: #7d5411;">softmax</text>
+
+        <!-- 3. after softmax -->
+        <text x="593" y="44" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">after softmax</text>
+
+        <g fill="none" stroke="#b68235" stroke-width="1">
+          <rect x="502" y="108" width="11" height="56" fill="#ffe3bf"></rect>
+          <rect x="517.6" y="160.9" width="11" height="3.1"></rect>
+          <rect x="533.2" y="163.4" width="11" height="0.6"></rect>
+          <rect x="548.8" y="148.6" width="11" height="15.4"></rect>
+          <rect x="564.4" y="162.3" width="11" height="1.7"></rect>
+          <rect x="580" y="163.8" width="11" height="0.2"></rect>
+          <rect x="595.6" y="130" width="11" height="34" fill="#ffe3bf"></rect>
+          <rect x="611.2" y="162.9" width="11" height="1.1"></rect>
+          <rect x="626.8" y="157.8" width="11" height="6.2"></rect>
+          <rect x="642.4" y="163.6" width="11" height="0.4"></rect>
+          <rect x="658" y="161.7" width="11" height="2.3"></rect>
+          <rect x="673.6" y="155.6" width="11" height="8.4"></rect>
+        </g>
+        <line x1="502" y1="164" x2="688" y2="164" stroke="#605d5d" stroke-width="1"></line>
+        <text x="507.5" y="100" text-anchor="middle" style="font-family: Georgia, serif; font-size: 10.5px; font-feature-settings: 'tnum'; fill: #7d5411;">0.43</text>
+        <text x="601" y="122" text-anchor="middle" style="font-family: Georgia, serif; font-size: 10.5px; font-feature-settings: 'tnum'; fill: #7d5411;">0.26</text>
+        <text x="593" y="240" text-anchor="middle" style="font-family: Georgia, serif; font-size: 12px; fill: #201f1d;">the big two take the row</text>
+        <text x="593" y="257" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">all positive, and they sum to 1</text>
+      </svg>
+    </figure>
+
+    <p>So, let's come back to the formula:</p>
+
+    <div class="formula plain">
+      <span class="math">
+        <span class="var">s</span><span class="op">(</span><span class="var">x</span><sub>i</sub><span class="op">)</span>
+        <span class="op">=</span>
+        <span class="frac">
+          <span class="frac-num"><span class="var">e</span><sup><span class="var">x</span><sub>i</sub></sup></span>
+          <span class="frac-bar"></span>
+          <span class="frac-den">
+            <span class="sum-op"><span class="sum-top">Seq_Len</span><span class="sum-sym">&Sigma;</span><span class="sum-bottom">j=1</span></span><span class="var">e</span><sup><span class="var">x</span><sub>j</sub></sup>
+          </span>
+        </span>
+      </span>
+    </div>
+
+    <p>
+      We start by pointing at the row this thread owns, and finding
+      its highest element:
+    </p>
+
+    <pre class="code-block"><code>device float* rowPtr = S + row * seq_len;
+
+float m = -INFINITY;
+for (uint j = 0; j < seq_len; j++) {
+    m = max(m, rowPtr[j]);
+}</code></pre>
+
+    <p>
+      Next, we compute the numerator for every entry in the row and
+      write it back in place, accumulating the denominator as we go:
+    </p>
+
+    <aside class="margin-note">
+      <p>Why subtract <code>m</code>:</p>
+
+      <div class="math">
+        <span class="frac">
+          <span class="frac-num"><span class="var">e</span><sup><span class="var">x</span><sub>i</sub><span class="op">-</span><span class="var">m</span></sup></span>
+          <span class="frac-bar"></span>
+          <span class="frac-den"><span class="sum-op"><span class="sum-top">Seq</span><span class="sum-sym">&Sigma;</span><span class="sum-bottom">j=1</span></span><span class="var">e</span><sup><span class="var">x</span><sub>j</sub><span class="op">-</span><span class="var">m</span></sup></span>
+        </span>
+      </div>
+
+      <div class="math">
+        <span class="op">=</span>
+        <span class="frac">
+          <span class="frac-num"><span class="var">e</span><sup><span class="var">x</span><sub>i</sub></sup><span class="op">&middot;</span><span class="var">e</span><sup><span class="op">-</span><span class="var">m</span></sup></span>
+          <span class="frac-bar"></span>
+          <span class="frac-den"><span class="var">e</span><sup><span class="op">-</span><span class="var">m</span></sup><span class="op">&middot;</span><span class="sum-op"><span class="sum-top">Seq</span><span class="sum-sym">&Sigma;</span><span class="sum-bottom">j=1</span></span><span class="var">e</span><sup><span class="var">x</span><sub>j</sub></sup></span>
+        </span>
+      </div>
+
+      <div class="math">
+        <span class="op">=</span>
+        <span class="frac">
+          <span class="frac-num"><span class="var">e</span><sup><span class="var">x</span><sub>i</sub></sup></span>
+          <span class="frac-bar"></span>
+          <span class="frac-den"><span class="sum-op"><span class="sum-top">Seq</span><span class="sum-sym">&Sigma;</span><span class="sum-bottom">j=1</span></span><span class="var">e</span><sup><span class="var">x</span><sub>j</sub></sup></span>
+        </span>
+        <span class="op">=</span> <span class="fn">softmax</span>
+      </div>
+
+      <p>
+        <code>e<sup>-m</sup></code> shows up in every term, top and
+        bottom, and cancels exactly. The <code>-m</code> never
+        changes the answer.
+      </p>
+      <p>
+        We do it because <code>exp()</code> returns infinity once its
+        input passes about 88.7. A raw score like 90 would make
+        <code>exp(90) = inf</code>, so we offset every value by the
+        maximum value of our row, <code>m</code>, to keep it out of
+        that range.
+      </p>
+    </aside>
+
+    <pre class="code-block"><code>float sum = 0.0;
+for (uint j = 0; j < seq_len; j++) {
+    float e = exp(rowPtr[j] - m);
+    rowPtr[j] = e;
+    sum += e;
+}</code></pre>
+
+    <p>
+      Finally, we loop over the row one more time and divide every
+      entry by the denominator we just accumulated:
+    </p>
+
+    <pre class="code-block"><code>for (uint j = 0; j < seq_len; j++) {
+    rowPtr[j] /= sum;
+}</code></pre>
+
+    <p>
+      This gives us the attention map <code>A</code>. We're ready to
+      get back our new tokens, ones that have attended to each other,
+      in the next step.
+    </p>
+
+    <h3 id="attention-output-kernel">Attention output kernel</h3>
+    <p>
+      This kernel is the fourth and final step of the attention
+      calculation, and it isn't anything new: the same GEMM pattern
+      as the first kernel, just between <code>A</code> and
+      <code>V</code> instead of <code>Q</code> and <code>K</code>.
+      The code is self explanatory.
+    </p>
+
+    <pre class="code-block"><code>float sum = 0.0;
+for (uint j = 0; j < seq_len; j++) {
+    sum += A[i * seq_len + j] * V[j * d_model + k];
+}
+O[i * d_model + k] = sum;</code></pre>
+
+    <h2 id="results">3. Results</h2>
+    <p>
+      We ran the same attention calculation in NumPy, using
+      <code>scaled_dot_product_attention</code>, and compared it
+      against our kernel on the same matrices:
+    </p>
+
+    <pre class="code-block"><code>=== attention_naive ===
+max_abs_error       = 3.725e-09
+mean_abs_error      = 3.362e-10
+max_relative_error  = 2.773e-05
+numpy time          = 41.1663 ms
+rust kernel time    = 0.6980 ms  (avg over 20 dispatches, release build)
+PASS (max_abs_error < 1e-03)</code></pre>
+
+    <p>
+      In future posts, we'll build toward flash attention: better
+      threadgroup management with tiling, and online softmax. The
+      full code for this kernel lives in
+      <code>attention-kernels/naive-attention</code> in the
+      <a href="https://github.com/PrabhuMane93/metal-llm-kernels">metal-llm-kernels</a>
+      repo.
+    </p>
 
   </div>
 
