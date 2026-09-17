@@ -452,6 +452,7 @@
       <li><a href="#kernel-implementation">2. Metal kernel implementation</a>
         <ol class="toc-sub">
           <li><a href="#buffer-management">Buffer management</a></li>
+          <li><a href="#qk-scaled-matmul-kernel">qk_scaled_matmul kernel</a></li>
         </ol>
       </li>
     </ol>
@@ -729,23 +730,14 @@
       <figcaption>A GPU buffer has no idea it holds a matrix. The shape <code>seq_len &times; d_model</code> lives only in the arithmetic that sizes the allocation and in the indices the kernel later computes; what gets reserved is a flat span of 262,144 bytes, written row after row, end to end.</figcaption>
     </figure>
 
-    <pre class="code-block"><code>fn make_buffer(
-    device: &amp;ProtocolObject&lt;dyn MTLDevice&gt;,
-    bytes: &amp;[u8],
-) -&gt; Retained&lt;ProtocolObject&lt;dyn MTLBuffer&gt;&gt; {
-    let buffer = device
-        .newBufferWithLength_options(bytes.len() as NSUInteger, MTLResourceOptions::StorageModeShared)
-        .expect("buffer alloc failed");
-    unsafe {
-        let ptr = buffer.contents().as_ptr() as *mut u8;
-        std::slice::from_raw_parts_mut(ptr, bytes.len()).copy_from_slice(bytes);
-    }
-    buffer
-}
+    <pre class="code-block"><code>fn make_buffer(device, bytes):
+    buffer = device.allocate(bytes.length, shared_storage)
+    copy bytes into buffer
+    return buffer
 
-let q_buffer = make_buffer(&amp;device, &amp;q_bytes);
-let k_buffer = make_buffer(&amp;device, &amp;k_bytes);
-let v_buffer = make_buffer(&amp;device, &amp;v_bytes);</code></pre>
+q_buffer = make_buffer(device, q_bytes)
+k_buffer = make_buffer(device, k_bytes)
+v_buffer = make_buffer(device, v_bytes)</code></pre>
 
     <p>
       <code>StorageModeShared</code>: the memory allocation in our Rust
@@ -753,6 +745,173 @@ let v_buffer = make_buffer(&amp;device, &amp;v_bytes);</code></pre>
       same physical bytes, since CPU and GPU are on the same chip in
       M-series Apple chips.
     </p>
+
+    <h3 id="qk-scaled-matmul-kernel">qk_scaled_matmul kernel</h3>
+    <p>
+      This is the first kernel, where the attention calculation
+      actually begins. It covers Steps 1 and 2 from above: a GEMM
+      between <code>Q</code> and <code>K</code>, then scaling the
+      result by <code>1/&radic;d_model</code>.
+    </p>
+
+    <aside class="margin-note">
+      <code>GEMM</code>: General Matrix Matrix Multiplication.
+    </aside>
+
+    <p>
+      We'll start with thread management: how Metal decides which
+      thread owns which element of <code>S</code>. The figure below
+      traces one thread from its threadgroup down to the single cell
+      it writes.
+    </p>
+
+    <aside class="margin-note">
+      <ul>
+        <li><code>gid</code>: this thread's coordinate in the whole dispatch grid, the pair the kernel receives directly.</li>
+        <li><code>tgid</code>: which threadgroup this thread belongs to, one of the 8 &times; 8 groups.</li>
+        <li><code>tid</code>: this thread's own position inside just that one threadgroup, 0 to 15 in each direction.</li>
+      </ul>
+    </aside>
+
+    <figure id="fig-threadgroups-qk">
+      <svg viewBox="0 0 700 300" style="width: 100%; height: auto; display: block;" role="img" aria-label="Three grids side by side: the eight by eight dispatch grid of threadgroups, the sixteen by sixteen threads inside one of them, and the 128 by 128 QK-transpose matrix where that thread's element sits, with gid.x and gid.y bracketed against the matrix edges">
+        <defs>
+        </defs>
+
+        <!-- 1. the dispatch grid -->
+        <text x="40" y="44" style="font-family: Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">grid_qk</text>
+        <g stroke="#d7d3d3" stroke-width="1" fill="none">
+          <rect x="40" y="90" width="136" height="136"></rect>
+          <line x1="57" y1="90" x2="57" y2="226"></line><line x1="74" y1="90" x2="74" y2="226"></line>
+          <line x1="91" y1="90" x2="91" y2="226"></line><line x1="108" y1="90" x2="108" y2="226"></line>
+          <line x1="125" y1="90" x2="125" y2="226"></line><line x1="142" y1="90" x2="142" y2="226"></line>
+          <line x1="159" y1="90" x2="159" y2="226"></line>
+          <line x1="40" y1="107" x2="176" y2="107"></line><line x1="40" y1="124" x2="176" y2="124"></line>
+          <line x1="40" y1="141" x2="176" y2="141"></line><line x1="40" y1="158" x2="176" y2="158"></line>
+          <line x1="40" y1="175" x2="176" y2="175"></line><line x1="40" y1="192" x2="176" y2="192"></line>
+          <line x1="40" y1="209" x2="176" y2="209"></line>
+        </g>
+        <rect x="125" y="124" width="17" height="17" fill="#ffe3bf" stroke="#b68235" stroke-width="1.2"></rect>
+        <text x="108" y="248" text-anchor="middle" style="font-family: Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #201f1d;">8 &times; 8 groups</text>
+        <text x="108" y="265" text-anchor="middle" style="font-family: Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">seq_len / 16 each way</text>
+
+        <g stroke="#c28d41" stroke-width="1">
+          <line x1="142" y1="124" x2="232" y2="90"></line>
+          <line x1="142" y1="141" x2="232" y2="226"></line>
+        </g>
+
+        <!-- 2. threads inside that group -->
+        <text x="232" y="44" style="font-family: Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">tg_2d, one group</text>
+        <g stroke="#e0dddd" stroke-width="0.8" fill="none">
+          <line x1="240.5" y1="90" x2="240.5" y2="226"></line><line x1="249" y1="90" x2="249" y2="226"></line>
+          <line x1="257.5" y1="90" x2="257.5" y2="226"></line><line x1="266" y1="90" x2="266" y2="226"></line>
+          <line x1="274.5" y1="90" x2="274.5" y2="226"></line><line x1="283" y1="90" x2="283" y2="226"></line>
+          <line x1="291.5" y1="90" x2="291.5" y2="226"></line><line x1="300" y1="90" x2="300" y2="226"></line>
+          <line x1="308.5" y1="90" x2="308.5" y2="226"></line><line x1="317" y1="90" x2="317" y2="226"></line>
+          <line x1="325.5" y1="90" x2="325.5" y2="226"></line><line x1="334" y1="90" x2="334" y2="226"></line>
+          <line x1="342.5" y1="90" x2="342.5" y2="226"></line><line x1="351" y1="90" x2="351" y2="226"></line>
+          <line x1="359.5" y1="90" x2="359.5" y2="226"></line>
+          <line x1="232" y1="98.5" x2="368" y2="98.5"></line><line x1="232" y1="107" x2="368" y2="107"></line>
+          <line x1="232" y1="115.5" x2="368" y2="115.5"></line><line x1="232" y1="124" x2="368" y2="124"></line>
+          <line x1="232" y1="132.5" x2="368" y2="132.5"></line><line x1="232" y1="141" x2="368" y2="141"></line>
+          <line x1="232" y1="149.5" x2="368" y2="149.5"></line><line x1="232" y1="158" x2="368" y2="158"></line>
+          <line x1="232" y1="166.5" x2="368" y2="166.5"></line><line x1="232" y1="175" x2="368" y2="175"></line>
+          <line x1="232" y1="183.5" x2="368" y2="183.5"></line><line x1="232" y1="192" x2="368" y2="192"></line>
+          <line x1="232" y1="200.5" x2="368" y2="200.5"></line><line x1="232" y1="209" x2="368" y2="209"></line>
+          <line x1="232" y1="217.5" x2="368" y2="217.5"></line>
+        </g>
+        <rect x="232" y="90" width="136" height="136" fill="none" stroke="#d7d3d3"></rect>
+        <rect x="283" y="183.5" width="8.5" height="8.5" fill="#b68235" stroke="#b68235"></rect>
+        <line x1="287" y1="192" x2="287" y2="238" stroke="#c28d41" stroke-width="1"></line>
+        <text x="300" y="248" style="font-family: Georgia, serif; font-size: 12px; fill: #7d5411;">one thread</text>
+        <text x="300" y="265" style="font-family: Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">16 &times; 16 = 256 threads</text>
+
+        <g stroke="#c28d41" stroke-width="1">
+          <line x1="291.5" y1="183.5" x2="500" y2="90"></line>
+          <line x1="291.5" y1="192" x2="500" y2="226"></line>
+        </g>
+
+        <!-- 3. the element in S -->
+        <text x="470" y="44" style="font-family: Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">S = QK&#7488; &middot; scale, 128 &times; 128</text>
+
+        <rect x="500" y="90" width="136" height="34" fill="#fbeedb"></rect>
+        <rect x="500" y="124" width="85" height="17" fill="#fbeedb"></rect>
+        <rect x="585" y="124" width="17" height="11.6875" fill="#fbeedb"></rect>
+        <rect x="585" y="135.6875" width="6.375" height="1.0625" fill="#fbeedb"></rect>
+
+        <rect x="500" y="90" width="136" height="136" fill="none" stroke="#a8a3a3"></rect>
+        <g stroke="#bdb8b8" stroke-width="0.8" fill="none">
+          <line x1="517" y1="90" x2="517" y2="226"></line><line x1="534" y1="90" x2="534" y2="226"></line>
+          <line x1="551" y1="90" x2="551" y2="226"></line><line x1="568" y1="90" x2="568" y2="226"></line>
+          <line x1="585" y1="90" x2="585" y2="226"></line><line x1="602" y1="90" x2="602" y2="226"></line>
+          <line x1="619" y1="90" x2="619" y2="226"></line>
+          <line x1="500" y1="107" x2="636" y2="107"></line><line x1="500" y1="124" x2="636" y2="124"></line>
+          <line x1="500" y1="141" x2="636" y2="141"></line><line x1="500" y1="158" x2="636" y2="158"></line>
+          <line x1="500" y1="175" x2="636" y2="175"></line><line x1="500" y1="192" x2="636" y2="192"></line>
+          <line x1="500" y1="209" x2="636" y2="209"></line>
+        </g>
+        <rect x="585" y="124" width="17" height="17" fill="none" stroke="#c28d41" stroke-width="1.2"></rect>
+        <rect x="591.375" y="135.6875" width="1.0625" height="1.0625" fill="#b68235"></rect>
+        <circle cx="591.9" cy="136.2" r="4.4" fill="none" stroke="#b68235" stroke-width="1"></circle>
+        <line x1="596" y1="139" x2="616" y2="158" stroke="#c28d41" stroke-width="1"></line>
+        <text x="618" y="162" style="font-family: Georgia, serif; font-size: 10.5px; fill: #7d5411;">its</text>
+        <text x="618" y="175" style="font-family: Georgia, serif; font-size: 10.5px; fill: #7d5411;">element</text>
+
+        <!-- gid.x along the top edge, gid.y down the left edge -->
+        <path d="M 500 80 L 500 74 L 591.9 74 L 591.9 80" fill="none" stroke="#b68235" stroke-width="1"></path>
+        <text x="546" y="66" text-anchor="middle" style="font-family: Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">gid.x</text>
+        <path d="M 490 90 L 484 90 L 484 136.2 L 490 136.2" fill="none" stroke="#b68235" stroke-width="1"></path>
+        <text x="474" y="113" text-anchor="middle" transform="rotate(-90 474 113)" style="font-family: Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">gid.y</text>
+
+        <text x="500" y="248" style="font-family: Georgia, serif; font-size: 11.5px; fill: #605d5d;">tinted: elements owned by</text>
+        <text x="500" y="263" style="font-family: Georgia, serif; font-size: 11.5px; fill: #605d5d;">the threads that come before it</text>
+      </svg>
+      <figcaption style="border-top: 1px solid var(--line); padding-top: 14px;">
+        <div style="font-family: Georgia, serif; font-style: italic; font-size: 1.25em; color: #201f1d; margin-bottom: 8px;">Which element is mine?</div>
+        <div style="font-feature-settings: 'tnum'; color: #7d5411; margin-bottom: 8px;">
+          gid.x = tgid.x &times; 16 + tid.x&#160;&#160;&middot;&#160;&#160;gid.y = tgid.y &times; 16 + tid.y
+        </div>
+        <div style="font-feature-settings: 'tnum'; color: #605d5d; margin-bottom: 8px;">
+          above, tgid = (5, 2) and tid = (6, 11), so gid = (86, 43)
+        </div>
+        Metal hands every thread that pair. <code>gid.y</code> is its query row, <code>gid.x</code> its key row, and it writes the one element of S where they cross.
+      </figcaption>
+    </figure>
+
+    <p>
+      Every thread now has its own <code>(gid.x, gid.y)</code> pair.
+      What it does with that pair, pulling one row of <code>Q</code>
+      and one row of <code>K</code> to compute a single dot product,
+      is the kernel body itself.
+    </p>
+
+    <p>
+      A few things to work out before the multiplication. We need
+      <code>Q&middot;K<sup>T</sup></code>, but computing it is the
+      same as multiplying one row of <code>Q</code> by one row of
+      <code>K</code>, since transposing turns <code>K</code>'s rows
+      into columns. For this thread, <code>i</code> is its query row
+      (<code>gid.y</code>) and <code>j</code> is its key row
+      (<code>gid.x</code>).
+    </p>
+
+    <pre class="code-block"><code>float sum = 0.0;
+for (uint d = 0; d < d_model; d++) {
+    sum += Q[i * d_model + d] * K[j * d_model + d];
+}</code></pre>
+
+    <p>
+      That sum is one entry of <code>S</code>, the buffer we already
+      allocated empty back in buffer management. Before writing it
+      in, we scale by <code>1/&radic;d_model</code>, then place it at
+      the flat memory address for row <code>i</code>, column
+      <code>j</code>: the same <code>(i, j)</code> the figure above
+      worked out for this thread, just run in the other direction,
+      turning a position back into one offset into <code>S</code>'s
+      flat byte span instead of the other way around.
+    </p>
+
+    <pre class="code-block"><code>S[i * seq_len + j] = sum * scale;</code></pre>
 
   </div>
 
