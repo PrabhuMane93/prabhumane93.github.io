@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flash Attention: Explained and Implemented in Metal &middot; Prabhu Mane</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23141413'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+  /* article shell, wider than the site's normal .wrap so margin notes
+     have room to sit in the right gutter */
+  .article-wrap{
+    max-width: 940px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+  .article-col{
+    max-width: 680px;
+  }
+  nav.top .article-wrap{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* header */
+  .article-header{
+    padding: 56px 0 28px;
+  }
+  .series-label{
+    font-family: var(--sans);
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+  .article-header h1{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 34px;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+    margin: 0 0 12px;
+  }
+  .article-header .dek{
+    font-family: var(--serif);
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin: 0 0 28px;
+  }
+
+  .byline{
+    display: flex;
+    flex-wrap: wrap;
+    gap: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+  }
+  .byline .field .label{
+    display: block;
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin-bottom: 4px;
+  }
+  .byline .field .value{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+  }
+  .byline .field .value a{
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .byline .field .value a:hover{ border-bottom-color: var(--ink); }
+
+  .article-body a{
+    color: var(--ink);
+    text-decoration-color: var(--ink-faint);
+  }
+  .article-body a:hover{ text-decoration-color: var(--ink); }
+
+  /* table of contents */
+  .toc{
+    padding: 28px 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .toc .toc-label{
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 12px;
+  }
+  .toc ol{
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .toc li{ margin: 0 0 8px; }
+  .toc a{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .toc a:hover{ border-bottom-color: var(--ink); }
+  .toc-sub{
+    list-style: none;
+    margin: 8px 0 0;
+    padding-left: 18px;
+  }
+  .toc-sub li{ margin: 0 0 6px; }
+  .toc-sub a{ font-size: 13px; color: var(--ink-soft); }
+  .toc .todo{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-faint);
+  }
+  .toc .todo-tag{
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-left: 8px;
+  }
+
+  /* body */
+  .article-body{
+    padding: 40px 0 24px;
+    font-family: var(--serif);
+    font-size: 17px;
+    line-height: 1.7;
+  }
+  .article-body h2{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: -0.005em;
+    margin: 44px 0 16px;
+  }
+  .article-body h2:first-child{ margin-top: 0; }
+  .article-body h3{
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 17px;
+    letter-spacing: -0.005em;
+    margin: 32px 0 14px;
+  }
+  .article-body p{ margin: 0 0 20px; }
+  .code-block{
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    line-height: 1.6;
+    background: var(--line);
+    border-radius: 8px;
+    padding: 18px 20px;
+    margin: 20px 0;
+    overflow-x: auto;
+    color: var(--ink);
+  }
+  .code-block code{ background: none; padding: 0; font-size: inherit; }
+  .article-body figure{ margin: 32px 0; }
+  .article-body figure svg{ display: block; width: 100%; height: auto; }
+  .article-body figcaption{
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    margin-top: 10px;
+  }
+  .article-body code{
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 15px;
+    background: var(--line);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  .formula{
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 17px;
+    text-align: center;
+    background: var(--line);
+    border-radius: 8px;
+    padding: 22px 20px;
+    margin: 24px 0;
+    color: var(--ink);
+  }
+  .formula.plain{
+    background: none;
+    border-radius: 0;
+    padding: 12px 0;
+  }
+
+  .math{
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 7px;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 25px;
+    color: var(--ink);
+  }
+  .math .var{ font-style: italic; }
+  .math .fn{ font-style: normal; }
+  .math .op{ font-style: normal; }
+  .math sup{ font-size: 0.62em; position: relative; top: -0.6em; }
+  .math sub{ font-size: 0.62em; position: relative; top: 0.3em; }
+
+  .frac{
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0 2px;
+    line-height: 1.35;
+  }
+  .frac-num, .frac-den{ padding: 0 3px; }
+  .frac-bar{
+    width: 100%;
+    border-top: 1.5px solid var(--ink);
+    margin: 1px 0;
+  }
+  .math .dim{ color: var(--ink-faint); font-weight: 400; }
+  .math .hl{ color: var(--ink); font-weight: 700; }
+  .frac-bar.dim{ border-top-color: var(--ink-faint); }
+  .frac-bar.hl{ border-top-color: var(--ink); }
+
+  .sum-op{
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    vertical-align: middle;
+    line-height: 1;
+    margin: 0 3px;
+  }
+  .sum-op .sum-top{ font-size: 0.4em; margin-bottom: 1px; white-space: nowrap; }
+  .sum-op .sum-sym{ font-size: 1.5em; line-height: 0.8; }
+  .sum-op .sum-bottom{ font-size: 0.4em; margin-top: 1px; white-space: nowrap; }
+
+  .step-formula-small{
+    text-align: center;
+    padding: 14px 0;
+  }
+  .step-formula-small .math{ font-size: 19px; }
+
+  /* input definitions list */
+  .input-defs{
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 9px 18px;
+    margin: 20px 0 24px;
+    font-family: var(--sans);
+    font-size: 15px;
+  }
+  .input-defs dt{
+    margin: 0;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .input-defs dd{
+    margin: 0;
+    color: var(--ink-soft);
+  }
+
+  /* margin notes: float into the right gutter on wide viewports,
+     collapse to an inline callout on narrow ones */
+  .margin-note{
+    float: right;
+    clear: right;
+    width: 220px;
+    margin: 4px -260px 12px 0;
+    padding-left: 14px;
+    border-left: 2px solid var(--line);
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-soft);
+  }
+  .margin-note img{
+    display: block;
+    width: 100%;
+    border-radius: 6px;
+    margin: 0 0 10px;
+  }
+  .margin-note code{
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    background: var(--line);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  .margin-note ul{
+    margin: 0;
+    padding-left: 16px;
+  }
+  .margin-note li{
+    margin: 0 0 10px;
+  }
+  .margin-note li:last-child{ margin-bottom: 0; }
+  .margin-note p{ margin: 0 0 10px; }
+  .margin-note p:last-child{ margin-bottom: 0; }
+  .margin-note .math{
+    display: flex;
+    font-size: 14px;
+    gap: 3px;
+    margin: 10px 0;
+    color: var(--ink);
+  }
+
+  /* step-by-step derivation cards */
+  .step-card{
+    margin: 18px 0;
+    padding: 22px 24px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+  }
+  .step-label{
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+  }
+  .step-formula{
+    text-align: center;
+    padding: 6px 0 18px;
+  }
+  .step-formula .math{ font-size: 22px; }
+  .step-caption{
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.6;
+    color: var(--ink);
+    margin: 0;
+    text-align: center;
+  }
+  .step-detail{
+    font-family: var(--serif);
+    font-size: 15.5px;
+    line-height: 1.7;
+    color: var(--ink);
+    text-align: left;
+    margin: 16px 0 0;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+  .step-detail:last-child{ margin-bottom: 0; }
+  .step-detail ul{
+    margin: 10px 0 0;
+    padding-left: 20px;
+  }
+  .step-detail li{ margin: 0 0 8px; }
+  .step-detail li:last-child{ margin-bottom: 0; }
+
+  .worked-example{
+    margin: 24px 0;
+    padding: 18px 20px;
+    border-left: 3px solid var(--ink-faint);
+    background: var(--line);
+    border-radius: 0 8px 8px 0;
+  }
+  .worked-example .label{
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    margin: 0 0 10px;
+  }
+  .worked-example p{
+    font-family: var(--serif);
+    font-size: 15.5px;
+    margin: 0 0 10px;
+  }
+  .worked-example p:last-child{ margin-bottom: 0; }
+  .worked-example code{ background: var(--bg); }
+  .worked-example table{
+    width: 100%;
+    border-collapse: collapse;
+    font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13.5px;
+    margin: 10px 0;
+  }
+  .worked-example th, .worked-example td{
+    text-align: right;
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .worked-example th:first-child, .worked-example td:first-child{ text-align: left; }
+
+  .scope-note{
+    margin: 32px 0 40px;
+    padding: 20px 22px;
+    border: 1px dashed var(--ink-faint);
+    border-radius: 8px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+  .scope-note strong{ color: var(--ink); }
+
+  .coming-next{
+    margin: 40px 0 0;
+    padding: 20px 22px;
+    border: 1px dashed var(--ink-faint);
+    border-radius: 8px;
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+  .coming-next strong{ color: var(--ink); }
+
+  .back-link{
+    padding: 8px 0 0;
+  }
+  .back-link a{
+    font-family: var(--sans);
+    font-size: 14px;
+    color: var(--ink-soft);
+    text-decoration: none;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  .back-link a:hover{ color: var(--ink); border-bottom-color: var(--ink); }
+
+  @media (max-width: 980px){
+    .article-header h1{ font-size: 27px; }
+    .margin-note{
+      float: none;
+      width: auto;
+      margin: 16px 0;
+      padding: 10px 14px;
+      border-left: 3px solid var(--line);
+    }
+  }
+  @media (max-width: 560px){
+    .math{ font-size: 19px; gap: 5px; }
+    .step-formula .math{ font-size: 17px; }
+    .worked-example table{ font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="top">
+  <div class="article-wrap">
+    <a class="brand" href="/">Prabhu Mane</a>
+    <div class="navlinks">
+      <a href="/#">Projects</a>
+      <a href="/blogs/" aria-current="page">Blog</a>
+    </div>
+  </div>
+</nav>
+<hr class="rule">
+
+<main class="article-wrap">
+
+  <header class="article-header article-col">
+    <p class="series-label">Implementing Flash Attention on Metal &middot; Part 2</p>
+    <h1>Flash Attention: Explained and Implemented in Metal</h1>
+    <p class="dek">Tiling Q, K, and V into threadgroup memory, and the online-softmax trick that makes exact attention possible without ever holding the full score matrix in memory.</p>
+
+    <div class="byline">
+      <div class="field">
+        <span class="label">Published</span>
+        <span class="value">September 29, 2026</span>
+      </div>
+      <div class="field">
+        <span class="label">Reading time</span>
+        <span class="value">7 mins</span>
+      </div>
+      <div class="field">
+        <span class="label">Code</span>
+        <span class="value"><a href="https://github.com/PrabhuMane93/metal-llm-kernels/tree/main/attention-kernels/flash-attention">metal-llm-kernels</a></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="toc article-col">
+    <p class="toc-label">Contents</p>
+    <ol>
+      <li><a href="#online-softmax">1. No Room for the Full Row? Hello Online Softmax!</a></li>
+      <li><a href="#running-max-correction">2. Running Max and the Exponentiated Sum and the Correction Factor</a></li>
+      <li><a href="#kernel-implementation">3. Metal kernel implementation</a></li>
+    </ol>
+  </nav>
+
+  <div class="article-body article-col">
+
+    <h2 id="online-softmax">1. No Room for the Full Row? Hello Online Softmax!</h2>
+
+    <aside class="margin-note">
+      <p>Just a reminder, softmax for one entry <code>x<sub>i</sub></code> in a row of <code>N</code> scores:</p>
+      <div class="math">
+        <span class="var">s</span><span class="op">(</span><span class="var">x</span><sub>i</sub><span class="op">)</span>
+        <span class="op">=</span>
+        <span class="frac">
+          <span class="frac-num"><span class="var">e</span><sup><span class="var">x</span><sub>i</sub><span class="op">&minus;</span><span class="fn">max</span></sup></span>
+          <span class="frac-bar"></span>
+          <span class="frac-den"><span class="sum-op"><span class="sum-top">N</span><span class="sum-sym">&Sigma;</span><span class="sum-bottom">j=0</span></span><span class="var">e</span><sup><span class="var">x</span><sub>j</sub><span class="op">&minus;</span><span class="fn">max</span></sup></span>
+        </span>
+      </div>
+    </aside>
+
+    <p>
+      So, in the last post, we saw that softmax is where the real space
+      complexity in attention shows up. Its formula is structured so that
+      you can't produce a single normalized weight until you have the row's
+      true maximum and its full exponentiated sum, and both of those need
+      every score in that row up front. The previous kernel handled this the
+      straightforward way: materialize the entire <code>S</code> matrix
+      first, then give each thread one row to sweep across three times,
+      re-reading the same values from memory each time:
+    </p>
+    <ul>
+      <li><strong>Step 1:</strong> find the max.</li>
+      <li><strong>Step 2:</strong> exponentiate and sum.</li>
+      <li><strong>Step 3:</strong> normalize, dividing every entry by that sum.</li>
+    </ul>
+    <p>
+      That works, but it means holding the full,
+      <code>seq_len*seq_len</code> matrix at once, an <code>O(n&sup2;)</code>
+      space complexity that only gets worse as the sequence grows. That's
+      the real problem flash attention has to solve: the need to see the
+      entire row before softmax can even start. Let's see how it does this.
+    </p>
+
+    <h2 id="running-max-correction">2. Running Max and the Exponentiated Sum and the Correction Factor</h2>
+
+    <p>
+      The two components of softmax's formula that force us to look at the
+      entire row are its <strong>max</strong> and its <strong>exponentiated
+      sum</strong>. So here's the real problem statement: can we find a way
+      to compute the softmax of a vector without going through it three
+      times, the three steps above?
+    </p>
+
+    <p>
+      Take the array <code>x = [1, 2, 1, 5]</code>. The goal is to traverse
+      it just once, left to right, maintaining two running numbers as we
+      go: a running max, <code>m</code>, and a running sum, <code>l</code>.
+    </p>
+
+
+<!--
+  Online-softmax worked example (Distill). Paste the <figure> block into the <d-article> body.
+  Self-contained HTML, no stylesheet, no JS. Transparent background.
+  Optional fonts: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital@0;1&family=Lora:ital,wght@0,400;0,600;1,400&display=swap">
+-->
+<figure class="l-body-outset" id="fig-online-softmax-steps" style="margin: 2.5rem 0;">
+  <div style="font-family: 'Lora', Georgia, serif; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.75rem 2rem; padding-bottom: 1rem; font-size: 18px; color: #201f1d; font-feature-settings: 'tnum';">
+    <div>softmax(<i>x</i><sub style="font-size: 0.65em; line-height: 0;">i</sub>) <span style="color: #605d5d;">=</span> <span style="display: inline-grid; justify-items: center; vertical-align: middle; line-height: 1.7; white-space: nowrap;"><span><span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">x<sub style="font-size: 0.8em; line-height: 1;">i</sub> &minus; m</sup></span></span><span style="border-top: 1px solid #201f1d; padding-top: 0.15em;">&#8467; <span style="color: #605d5d;">=</span> &Sigma;<sub style="font-size: 0.6em;">j</sub> <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">x<sub style="font-size: 0.8em; line-height: 1;">j</sub> &minus; m</sup></span></span></span></div>
+    <div><i>x</i> = [1, 2, 1, 5]</div>
+  </div>
+  <div style="display: grid; grid-template-columns: minmax(0, 9rem) minmax(0, 1fr); column-gap: 1.5rem; padding: 1.1rem 0; border-top: 1px solid #ddd9d9;">
+      <div><div style="font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.35em; color: #201f1d; line-height: 1.2;">Step 1</div><div style="font-family: 'Lora', Georgia, serif; font-size: 15px; color: #605d5d; margin-top: 0.3rem; font-feature-settings: 'tnum';"><i>m</i><sub style="font-size: 0.65em; line-height: 0;">1</sub> = 1</div></div>
+      <div style="font-family: 'Lora', Georgia, serif; min-width: 0;"><div style="font-size: 18px; line-height: 2.4; word-spacing: 0.08em; color: #201f1d; font-feature-settings: 'tnum';"><i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">1</sub> <span style="color: #605d5d;">=</span> <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;1</sup></span></div></div>
+    </div>
+  <div style="display: grid; grid-template-columns: minmax(0, 9rem) minmax(0, 1fr); column-gap: 1.5rem; padding: 1.1rem 0; border-top: 1px solid #ddd9d9;">
+      <div><div style="font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.35em; color: #201f1d; line-height: 1.2;">Step 2</div><div style="font-family: 'Lora', Georgia, serif; font-size: 15px; color: #605d5d; margin-top: 0.3rem; font-feature-settings: 'tnum';"><i>m</i><sub style="font-size: 0.65em; line-height: 0;">2</sub> = max(1, 2) = 2</div></div>
+      <div style="font-family: 'Lora', Georgia, serif; min-width: 0;"><div style="font-size: 18px; line-height: 2.4; word-spacing: 0.08em; color: #201f1d; font-feature-settings: 'tnum';"><i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">2</sub> <span style="color: #605d5d;">=</span> <i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">1</sub> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span> <span style="color: #605d5d;">=</span> <span style="text-decoration: underline wavy #9a3f1c; text-decoration-thickness: 1px; text-underline-offset: 6px;"><span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;1</sup></span></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span></div><div style="font-family: 'Lora', Georgia, serif; font-size: 13.5px; line-height: 1.5; color: #9a3f1c; margin: 0.15rem 0 0.4rem; text-wrap: pretty;">Wrong: <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;1</sup></span> was computed against the old max 1, not the new max 2.</div><div style="font-size: 18px; line-height: 2.4; word-spacing: 0.08em; color: #201f1d; font-feature-settings: 'tnum';"><i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">2</sub> <span style="color: #605d5d;">=</span> <i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">1</sub> &middot; <span style="border: 1.3px solid #9a3f1c; border-radius: 999px; padding: 0.05em 0.35em; color: #9a3f1c; font-weight: 600;"><span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2</sup></span></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span> <span style="color: #605d5d;">=</span> <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;1+1&minus;2</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span> <span style="color: #605d5d;">=</span> <span style="text-decoration: underline wavy #3f6b3c; text-decoration-thickness: 1px; text-underline-offset: 6px;"><span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span></span></div><div style="font-family: 'Lora', Georgia, serif; font-size: 13.5px; line-height: 1.5; color: #605d5d; margin: 0.15rem 0 0.4rem; text-wrap: pretty;">Multiplying by the correction factor <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">m&#8321;&minus;m&#8322;</sup></span> moves the old sum onto the new max.</div></div>
+    </div>
+  <div style="display: grid; grid-template-columns: minmax(0, 9rem) minmax(0, 1fr); column-gap: 1.5rem; padding: 1.1rem 0; border-top: 1px solid #ddd9d9;">
+      <div><div style="font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.35em; color: #201f1d; line-height: 1.2;">Step 3</div><div style="font-family: 'Lora', Georgia, serif; font-size: 15px; color: #605d5d; margin-top: 0.3rem; font-feature-settings: 'tnum';"><i>m</i><sub style="font-size: 0.65em; line-height: 0;">3</sub> = max(2, 1) = 2</div></div>
+      <div style="font-family: 'Lora', Georgia, serif; min-width: 0;"><div style="font-size: 18px; line-height: 2.4; word-spacing: 0.08em; color: #201f1d; font-feature-settings: 'tnum';"><i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">3</sub> <span style="color: #605d5d;">=</span> <i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">2</sub> &middot; <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2</sup></span> <span style="color: #605d5d;">=</span> <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2</sup></span></div><div style="font-family: 'Lora', Georgia, serif; font-size: 13.5px; line-height: 1.5; color: #605d5d; margin: 0.15rem 0 0.4rem; text-wrap: pretty;">The max did not change, so the correction is <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">0</sup></span> = 1.</div></div>
+    </div>
+  <div style="display: grid; grid-template-columns: minmax(0, 9rem) minmax(0, 1fr); column-gap: 1.5rem; padding: 1.1rem 0; border-top: 1px solid #ddd9d9;">
+      <div><div style="font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.35em; color: #201f1d; line-height: 1.2;">Step 4</div><div style="font-family: 'Lora', Georgia, serif; font-size: 15px; color: #605d5d; margin-top: 0.3rem; font-feature-settings: 'tnum';"><i>m</i><sub style="font-size: 0.65em; line-height: 0;">4</sub> = max(2, 5) = 5</div></div>
+      <div style="font-family: 'Lora', Georgia, serif; min-width: 0;"><div style="font-size: 18px; line-height: 2.4; word-spacing: 0.08em; color: #201f1d; font-feature-settings: 'tnum';"><i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">4</sub> <span style="color: #605d5d;">=</span> <i>&#8467;</i><sub style="font-size: 0.65em; line-height: 0;">3</sub> &middot; <span style="border: 1.3px solid #9a3f1c; border-radius: 999px; padding: 0.05em 0.35em; color: #9a3f1c; font-weight: 600;"><span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;5</sup></span></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">5&minus;5</sup></span> <span style="color: #605d5d;">=</span> (<span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2</sup></span>) <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;5</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">5&minus;5</sup></span></div><div style="font-size: 18px; line-height: 2.4; word-spacing: 0.08em; color: #201f1d; font-feature-settings: 'tnum';"><span style="color: #605d5d;">=</span> <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2+2&minus;5</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;2+2&minus;5</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;2+2&minus;5</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">5&minus;5</sup></span></div><div style="font-size: 18px; line-height: 2.4; word-spacing: 0.08em; color: #201f1d; font-feature-settings: 'tnum';"><span style="color: #605d5d;">=</span> <span style="text-decoration: underline wavy #3f6b3c; text-decoration-thickness: 1px; text-underline-offset: 6px;"><span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;5</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">2&minus;5</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">1&minus;5</sup></span> + <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">5&minus;5</sup></span></span></div><div style="font-family: 'Lora', Georgia, serif; font-size: 13.5px; line-height: 1.5; color: #3f6b3c; margin: 0.15rem 0 0.4rem; text-wrap: pretty;">One rescale corrects every earlier term at once. The result is the softmax denominator over the true max 5.</div></div>
+    </div>
+  <figcaption style="margin-top: 0.4rem; color: #4a4746; border-top: 1px solid #ddd9d9; padding-top: 0.9rem; font-family: 'Lora', Georgia, serif; font-size: 14px; line-height: 1.55;">
+    <div style="font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.25em; color: #201f1d; margin-bottom: 0.4rem;">Fusing the max with the normalisation sum</div>
+    A single pass keeps a running max <i>m</i> and a running sum &#8467;. When the max grows, the sum is multiplied by the <span style="color: #9a3f1c;">correction factor</span> <span style="white-space: nowrap;">e<sup style="font-size: 0.62em; vertical-align: 0.85em; line-height: 1;">m<sub style="font-size: 0.8em; line-height: 1;">old</sub> &minus; m<sub style="font-size: 0.8em; line-height: 1;">new</sub></sup></span>.
+  </figcaption>
+</figure>
+
+    <p>
+      Every later step follows the exact same pattern: compare the running
+      max to the new value, and if it changed, rescale everything
+      accumulated so far by <code>e^(m_old &minus; m_new)</code> before
+      folding in the new term. Generalized across all <code>N</code>
+      elements, the whole algorithm collapses into two passes: one combined
+      pass that builds the running max and sum together in a single read of
+      <code>x</code>, and a second, cheap pass that normalizes using
+      whatever final max and sum came out of the first:
+    </p>
+
+<!--
+  Online-softmax pseudocode figure (Distill). Paste the <figure> block into the <d-article> body.
+  Self-contained: inline SVG, no stylesheet, no JS. Transparent background.
+  Optional fonts: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital@0;1&family=Lora:ital@0;1&display=swap">
+-->
+<figure class="l-page" id="fig-online-softmax-pseudocode" style="margin: 2.5rem 0;">
+  <svg viewBox="0 0 760 388" style="width: 100%; height: auto; display: block;" role="img" aria-label="Online softmax pseudocode. m0 = minus infinity, l0 = 0. For i = 1 to N: m_i = max(m_(i−1), x_i); l_i = l_(i−1) times e^(m_(i−1) − m_i) plus e^(x_i − m_i). For k = 1 to N: x_k gets e^(x_k − m_N) over l_N. Lines 3 to 5 are pass one, a single read computing the running max and sum, with the correction factor rescaling the old sum when the max grows. Lines 6 and 7 are pass two, normalizing with the final m_N and l_N.">
+    <text x="40" y="56" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #a8a3a3;">1</text><text x="40" y="102" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #a8a3a3;">2</text><text x="40" y="148" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #a8a3a3;">3</text><text x="40" y="194" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #a8a3a3;">4</text><text x="40" y="240" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #a8a3a3;">5</text><text x="40" y="286" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #a8a3a3;">6</text><text x="40" y="340" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #a8a3a3;">7</text><text x="80" y="56" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';"><tspan dy="0" style="font-size: 19px; font-style: italic;  ">m</tspan><tspan dy="5" style="font-size: 12.5px;   ">0</tspan><tspan dy="-5" style="font-size: 19px;   ">  =  &minus;&infin;</tspan></text><text x="80" y="102" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';"><tspan dy="0" style="font-size: 19px; font-style: italic;  ">&#8467;</tspan><tspan dy="5" style="font-size: 12.5px;   ">0</tspan><tspan dy="-5" style="font-size: 19px;   ">  =  0</tspan></text><text x="80" y="148" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';"><tspan dy="0" style="font-size: 19px;  fill: #7d7979; ">for </tspan><tspan dy="0" style="font-size: 19px; font-style: italic;  ">i</tspan><tspan dy="0" style="font-size: 19px;   "> = 1 </tspan><tspan dy="0" style="font-size: 19px;  fill: #7d7979; ">to </tspan><tspan dy="0" style="font-size: 19px; font-style: italic;  ">N</tspan></text><text x="114" y="194" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';"><tspan dy="0" style="font-size: 19px; font-style: italic;  ">m</tspan><tspan dy="5" style="font-size: 12.5px; font-style: italic;  ">i</tspan><tspan dy="-5" style="font-size: 19px;   ">  =  max(</tspan><tspan dy="0" style="font-size: 19px; font-style: italic;  ">m</tspan><tspan dy="5" style="font-size: 12.5px; font-style: italic;  ">i&minus;1</tspan><tspan dy="-5" style="font-size: 19px;   ">, </tspan><tspan dy="0" style="font-size: 19px; font-style: italic;  ">x</tspan><tspan dy="5" style="font-size: 12.5px; font-style: italic;  ">i</tspan><tspan dy="-5" style="font-size: 19px;   ">)</tspan></text><text x="114" y="240" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';"><tspan dy="0" style="font-size: 19px; font-style: italic;  ">&#8467;</tspan><tspan dy="5" style="font-size: 12.5px; font-style: italic;  ">i</tspan><tspan dy="-5" style="font-size: 19px;   ">  =  </tspan><tspan dy="0" style="font-size: 19px; font-style: italic;  ">&#8467;</tspan><tspan dy="5" style="font-size: 12.5px; font-style: italic;  ">i&minus;1</tspan><tspan dy="-5" style="font-size: 19px;   "> &middot; </tspan><tspan dy="0" style="font-size: 19px;   fill: #9a3f1c; font-weight: 600;">e</tspan><tspan dy="-10" style="font-size: 12.5px; font-style: italic;  fill: #9a3f1c; font-weight: 600;">m</tspan><tspan dy="4" style="font-size: 9.5px; font-style: italic;  fill: #9a3f1c; font-weight: 600;">i&minus;1</tspan><tspan dy="-4" style="font-size: 12.5px;   fill: #9a3f1c; font-weight: 600;"> &minus; </tspan><tspan dy="0" style="font-size: 12.5px; font-style: italic;   fill: #9a3f1c; font-weight: 600;">m</tspan><tspan dy="4" style="font-size: 9.5px; font-style: italic;  fill: #9a3f1c; font-weight: 600;">i</tspan><tspan dy="6" style="font-size: 19px;   ">  +  e</tspan><tspan dy="-10" style="font-size: 12.5px; font-style: italic;  ">x</tspan><tspan dy="4" style="font-size: 9.5px; font-style: italic;  ">i</tspan><tspan dy="-4" style="font-size: 12.5px;   "> &minus; </tspan><tspan dy="0" style="font-size: 12.5px; font-style: italic;   ">m</tspan><tspan dy="4" style="font-size: 9.5px; font-style: italic;  ">i</tspan></text><text x="80" y="286" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';"><tspan dy="0" style="font-size: 19px;  fill: #7d7979; ">for </tspan><tspan dy="0" style="font-size: 19px; font-style: italic;  ">k</tspan><tspan dy="0" style="font-size: 19px;   "> = 1 </tspan><tspan dy="0" style="font-size: 19px;  fill: #7d7979; ">to </tspan><tspan dy="0" style="font-size: 19px; font-style: italic;  ">N</tspan></text><text x="114" y="346" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';"><tspan dy="0" style="font-size: 19px; font-style: italic;  ">x</tspan><tspan dy="5" style="font-size: 12.5px; font-style: italic;  ">k</tspan><tspan dy="-5" style="font-size: 19px;   ">  &larr;</tspan></text><text x="188" y="334" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';" text-anchor="middle"><tspan dy="0" style="font-size: 19px;   ">e</tspan><tspan dy="-10" style="font-size: 12.5px; font-style: italic;  ">x</tspan><tspan dy="4" style="font-size: 9.5px; font-style: italic;  ">k</tspan><tspan dy="-4" style="font-size: 12.5px;   "> &minus; </tspan><tspan dy="0" style="font-size: 12.5px; font-style: italic;   ">m</tspan><tspan dy="4" style="font-size: 9.5px; font-style: italic;  ">N</tspan></text><line x1="156" y1="341" x2="220" y2="341" stroke="#201f1d" stroke-width="1"></line><text x="188" y="364" style="font-family: 'Lora', Georgia, serif; fill: #201f1d; font-feature-settings: 'tnum';" text-anchor="middle"><tspan dy="0" style="font-size: 19px; font-style: italic;  ">&#8467;</tspan><tspan dy="5" style="font-size: 12.5px; font-style: italic;  ">N</tspan></text><path d="M 470 132 L 476 132 L 476 248 L 470 248" fill="none" stroke="#b68235" stroke-width="1"></path><text x="490" y="154" style="font-family: 'Lora', Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">pass 1</text><text x="490" y="174" style="font-family: 'Lora', Georgia, serif; font-size: 12px; fill: #605d5d;">running max <tspan style="font-style: italic;">m</tspan> and running sum <tspan style="font-style: italic;">&#8467;</tspan>,</text><text x="490" y="190" style="font-family: 'Lora', Georgia, serif; font-size: 12px; fill: #605d5d;">one read of <tspan style="font-style: italic;">x</tspan></text><text x="490" y="236" style="font-family: 'Lora', Georgia, serif; font-size: 12px; fill: #9a3f1c;">correction: rescales the old sum</text><text x="490" y="252" style="font-family: 'Lora', Georgia, serif; font-size: 12px; fill: #9a3f1c;">whenever the max grows</text><path d="M 470 270 L 476 270 L 476 370 L 470 370" fill="none" stroke="#b68235" stroke-width="1"></path><text x="490" y="292" style="font-family: 'Lora', Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">pass 2</text><text x="490" y="312" style="font-family: 'Lora', Georgia, serif; font-size: 12px; fill: #605d5d;">normalize with the final</text><text x="490" y="328" style="font-family: 'Lora', Georgia, serif; font-size: 12px; fill: #605d5d;"><tspan style="font-style: italic;">m</tspan><tspan dy="3" style="font-size: 8.5px; font-style: italic;">N</tspan><tspan dy="-3"> and </tspan><tspan style="font-style: italic;">&#8467;</tspan><tspan dy="3" style="font-size: 8.5px; font-style: italic;">N</tspan></text>
+  </svg>
+</figure>
+
+    <p>
+      Pass 1 (lines 3&ndash;5) is exactly the two running numbers we just
+      traced by hand: one read of the array, updating <code>m</code> and
+      <code>l</code> together, with the correction factor rescaling the old
+      sum whenever a bigger max shows up. Pass 2 (lines 6&ndash;7) only
+      happens once <code>m_N</code> and <code>l_N</code>, the true max and
+      sum, are known, dividing every term by the same final <code>l_N</code>.
+      Here's that same array, <code>x = [1, 2, 1, 5]</code>, traced through
+      pass 1 step by step:
+    </p>
+
+<!--
+  Online-softmax nesting figure (Distill). Paste the <figure> block into the <d-article> body.
+  Self-contained: inline SVG, no stylesheet, no JS. Transparent background.
+  Optional fonts: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital@0;1&family=Lora:ital@0;1&display=swap">
+-->
+<figure class="l-page" id="fig-online-softmax" style="margin: 2.5rem 0;">
+  <svg viewBox="0 0 800 440" style="width: 100%; height: auto; display: block;" role="img" aria-label="Online softmax over x = 1, 2, 1, 5. Each running sum d has a tinted background; a brace and arrow carry it into the bracket of the next row, where the same tint marks it once. It is multiplied by the correction e to the old max minus new max and the new term is added. The correction is e to the 1 minus 2 when the max goes from 1 to 2, equals 1 when the max stays 2, and is e to the 2 minus 5 when the max goes from 2 to 5.">
+    <defs><marker id="os-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 8 4 L 0 8" fill="none" stroke="#8f8a8a" stroke-width="1.2"></path></marker></defs>
+    <rect x="85" y="102" width="49.19999999999999" height="36" rx="3" fill="#f8e3c6"></rect><rect x="85" y="196" width="185.59999999999997" height="36" rx="3" fill="#dce7f1"></rect><rect x="87" y="199" width="62.19999999999999" height="30" rx="2" fill="#f8e3c6" stroke="#fff" stroke-width="1.5"></rect><rect x="85" y="290" width="313.99999999999994" height="36" rx="3" fill="#dfeadb"></rect><rect x="87" y="293" width="190.59999999999997" height="30" rx="2" fill="#dce7f1" stroke="#fff" stroke-width="1.5"></rect><rect x="87" y="387" width="318.99999999999994" height="30" rx="2" fill="#dfeadb"></rect>
+    <text x="90" y="128" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #3d3a39;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;1)</tspan></text><text x="90" y="222" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">[</text><text x="99.5" y="222" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;1)</tspan></text><text x="139.7" y="222" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">]</text><line x1="157.2" y1="227" x2="196.39999999999998" y2="227" stroke="#9a3f1c" stroke-width="1.3"></line><text x="157.2" y="222" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #9a3f1c; font-weight: 600;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;2)</tspan></text><text x="204.39999999999998" y="222" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">+</text><text x="226.39999999999998" y="222" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #3d3a39;">e<tspan dy="-9" style="font-size: 12px;">(2&minus;2)</tspan></text><text x="90" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">[</text><text x="99.5" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">[</text><text x="109" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;1)</tspan></text><text x="149.2" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">]</text><text x="158.7" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;2)</tspan></text><text x="205.89999999999998" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">+</text><text x="227.89999999999998" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(2&minus;2)</tspan></text><text x="268.09999999999997" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">]</text><text x="285.59999999999997" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #3d3a39; opacity: 0.6;">e<tspan dy="-9" style="font-size: 12px;">(2&minus;2)</tspan></text><text x="332.79999999999995" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">+</text><text x="354.79999999999995" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #3d3a39;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;2)</tspan></text><text x="90" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">[</text><text x="99.5" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">[</text><text x="109" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">[</text><text x="118.5" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;1)</tspan></text><text x="158.7" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">]</text><text x="168.2" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;2)</tspan></text><text x="215.39999999999998" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">+</text><text x="237.39999999999998" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(2&minus;2)</tspan></text><text x="277.59999999999997" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">]</text><text x="287.09999999999997" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(2&minus;2)</tspan></text><text x="334.29999999999995" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #8f8a8a;">+</text><text x="356.29999999999995" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #8f8a8a;">e<tspan dy="-9" style="font-size: 12px;">(1&minus;2)</tspan></text><text x="396.49999999999994" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">]</text><line x1="413.99999999999994" y1="415" x2="453.19999999999993" y2="415" stroke="#9a3f1c" stroke-width="1.3"></line><text x="413.99999999999994" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #9a3f1c; font-weight: 600;">e<tspan dy="-9" style="font-size: 12px;">(2&minus;5)</tspan></text><text x="461.19999999999993" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; fill: #3d3a39;">+</text><text x="483.19999999999993" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 19px; font-feature-settings: 'tnum'; fill: #3d3a39;">e<tspan dy="-9" style="font-size: 12px;">(5&minus;5)</tspan></text><path d="M 88 142 Q 88 149, 95 149 L 102.6 149 Q 109.6 149, 109.6 156 Q 109.6 149, 116.6 149 L 124.19999999999999 149 Q 131.2 149, 131.2 142" fill="none" stroke="#8f8a8a" stroke-width="1.1"></path><path d="M 109.6 156 C 109.6 170, 119.1 178, 119.1 193" fill="none" stroke="#8f8a8a" stroke-width="1.1" marker-end="url(#os-a)"></path><text x="117.6" y="168" style="font-family: 'Lora', Georgia, serif; font-size: 11px; font-style: italic; fill: #605d5d;">sum d<tspan dy="3" style="font-size: 8px; font-style: normal;">1</tspan></text><path d="M 88 236 Q 88 243, 95 243 L 170.79999999999998 243 Q 177.79999999999998 243, 177.79999999999998 250 Q 177.79999999999998 243, 184.79999999999998 243 L 260.59999999999997 243 Q 267.59999999999997 243, 267.59999999999997 236" fill="none" stroke="#8f8a8a" stroke-width="1.1"></path><path d="M 177.79999999999998 250 C 177.79999999999998 264, 187.29999999999998 272, 187.29999999999998 287" fill="none" stroke="#8f8a8a" stroke-width="1.1" marker-end="url(#os-a)"></path><text x="185.79999999999998" y="262" style="font-family: 'Lora', Georgia, serif; font-size: 11px; font-style: italic; fill: #605d5d;">sum d<tspan dy="3" style="font-size: 8px; font-style: normal;">2</tspan></text><path d="M 88 330 Q 88 337, 95 337 L 234.99999999999997 337 Q 241.99999999999997 337, 241.99999999999997 344 Q 241.99999999999997 337, 248.99999999999997 337 L 388.99999999999994 337 Q 395.99999999999994 337, 395.99999999999994 330" fill="none" stroke="#8f8a8a" stroke-width="1.1"></path><path d="M 241.99999999999997 344 C 241.99999999999997 358, 251.49999999999997 366, 251.49999999999997 381" fill="none" stroke="#8f8a8a" stroke-width="1.1" marker-end="url(#os-a)"></path><text x="249.99999999999997" y="356" style="font-family: 'Lora', Georgia, serif; font-size: 11px; font-style: italic; fill: #605d5d;">sum d<tspan dy="3" style="font-size: 8px; font-style: normal;">3</tspan></text><text x="640" y="128" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-style: italic; fill: #201f1d;">d<tspan dy="4" style="font-size: 10px; font-style: normal;">1</tspan></text><text x="666" y="122" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">max 1</text><text x="640" y="222" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-style: italic; fill: #201f1d;">d<tspan dy="4" style="font-size: 10px; font-style: normal;">2</tspan></text><text x="666" y="216" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">max 1 &rarr; 2</text><text x="666" y="232" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #9a3f1c;">correction e<tspan dy="-5" style="font-size: 8.5px;">(1&minus;2)</tspan></text><text x="640" y="316" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-style: italic; fill: #201f1d;">d<tspan dy="4" style="font-size: 10px; font-style: normal;">3</tspan></text><text x="666" y="310" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">max stays 2</text><text x="666" y="326" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d7979;">correction = 1</text><text x="640" y="410" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-style: italic; fill: #201f1d;">d<tspan dy="4" style="font-size: 10px; font-style: normal;">4</tspan></text><text x="666" y="404" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">max 2 &rarr; 5</text><text x="666" y="420" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #9a3f1c;">correction e<tspan dy="-5" style="font-size: 8.5px;">(2&minus;5)</tspan></text><text x="50" y="45" style="font-family: 'Lora', Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">x</text><text x="109.6" y="45" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-feature-settings: 'tnum'; fill: #201f1d;">1</text><path d="M 109.6 52 L 109.6 98" fill="none" stroke="#b8b3b3" stroke-width="1" marker-end="url(#os-a)"></path><text x="245.99999999999997" y="45" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-feature-settings: 'tnum'; fill: #201f1d;">2</text><path d="M 245.99999999999997 52 L 245.99999999999997 192" fill="none" stroke="#b8b3b3" stroke-width="1" marker-end="url(#os-a)"></path><text x="374.4" y="45" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-feature-settings: 'tnum'; fill: #201f1d;">1</text><path d="M 374.4 52 L 374.4 286" fill="none" stroke="#b8b3b3" stroke-width="1" marker-end="url(#os-a)"></path><text x="502.79999999999995" y="45" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-feature-settings: 'tnum'; fill: #201f1d;">5</text><path d="M 502.79999999999995 52 L 502.79999999999995 380" fill="none" stroke="#b8b3b3" stroke-width="1" marker-end="url(#os-a)"></path>
+  </svg>
+  <figcaption style="margin-top: 1.1rem; color: #4a4746; border-top: 1px solid #ddd9d9; padding-top: 0.9rem;">
+    <div style="font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.25em; color: #201f1d; margin-bottom: 0.5rem;">Online softmax on x = [1, 2, 1, 5]</div>
+    Each running sum is carried into the next step, rescaled by e<sup>(m<sub>old</sub> &minus; m<sub>new</sub>)</sup>, and the new term is added.
+  </figcaption>
+</figure>
+
+    <p>
+      The final running sum, <code>d<sub>4</sub> &approx; 1.0864</code>,
+      matches computing softmax directly over all four scores at once: max
+      <code>5</code>, sum <code>e^(1&minus;5) + e^(2&minus;5) + e^(1&minus;5)
+      + e^(5&minus;5) &approx; 1.0864</code>. Same answer, reached one value
+      at a time, two running numbers carried between them, never all four in
+      memory together.
+    </p>
+
+    <h2 id="kernel-implementation">3. Metal kernel implementation</h2>
+    <p>
+      The fix is to never materialize the whole matrix: split <code>Q</code>
+      into small row blocks, split <code>K</code> and <code>V</code> into
+      small row blocks, and compute attention one small <code>Br &times;
+      Bc</code> tile at a time, holding only that tile in memory before
+      discarding it.
+    </p>
+    <p>
+      The tiling scheme itself, before any kernel code: one threadgroup owns
+      one <code>Br</code>-row block of <code>Q</code> for its entire
+      lifetime, loaded once. <code>K</code> and <code>V</code> are streamed
+      in <code>Bc</code>-row blocks, one pair per loop iteration, the same
+      block visiting every threadgroup in turn before the next one loads.
+    </p>
+
+<!--
+  Flash-attention tiling figure (Distill). Paste the <figure> block into the <d-article> body.
+  Self-contained: inline SVG, no stylesheet, no JS. Scales to the column width.
+  Optional fonts: <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital@0;1&family=Lora&display=swap">
+-->
+<figure class="l-page" id="fig-flash-tiling" style="margin: 2.5rem 0;">
+  <svg viewBox="0 0 790 420" style="width: 100%; height: auto; display: block;" role="img" aria-label="A threadgrid of four threadgroups in a row, tg 0 to tg 3, each a four by four grid of threads. On the right, Q on device is split into four row blocks of Br rows, each wired by an arrow to its threadgroup, so the four blocks use up all four groups. On the left, K and V on device are split into blocks of Bc rows that fade downward, each streamed into the threadgroups one loop iteration at a time.">
+    <defs><marker id="fa-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 8 4 L 0 8" fill="none" stroke="#b68235" stroke-width="1.2"></path></marker><linearGradient id="fa-fade-grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"></stop><stop offset="1" stop-color="#000"></stop></linearGradient><mask id="fa-fade" maskContentUnits="objectBoundingBox"><rect x="-0.1" y="0" width="1.2" height="1" fill="url(#fa-fade-grad)"></rect></mask></defs>
+    <text x="402" y="82" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">threadgrid — 4 threadgroups</text><text x="402" y="98" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">each 4 × 4 threads</text><rect x="330" y="192" width="144" height="36" fill="#fbeedb"></rect><g stroke="#e8e5e5" stroke-width="0.7"><line x1="339" y1="192" x2="339" y2="228"></line><line x1="348" y1="192" x2="348" y2="228"></line><line x1="357" y1="192" x2="357" y2="228"></line><line x1="375" y1="192" x2="375" y2="228"></line><line x1="384" y1="192" x2="384" y2="228"></line><line x1="393" y1="192" x2="393" y2="228"></line><line x1="411" y1="192" x2="411" y2="228"></line><line x1="420" y1="192" x2="420" y2="228"></line><line x1="429" y1="192" x2="429" y2="228"></line><line x1="447" y1="192" x2="447" y2="228"></line><line x1="456" y1="192" x2="456" y2="228"></line><line x1="465" y1="192" x2="465" y2="228"></line><line x1="330" y1="201" x2="474" y2="201"></line><line x1="330" y1="210" x2="474" y2="210"></line><line x1="330" y1="219" x2="474" y2="219"></line></g><rect x="330" y="192" width="36" height="36" fill="none" stroke="#b68235" stroke-width="1.4"></rect><rect x="366" y="192" width="36" height="36" fill="none" stroke="#b68235" stroke-width="1.4"></rect><rect x="402" y="192" width="36" height="36" fill="none" stroke="#b68235" stroke-width="1.4"></rect><rect x="438" y="192" width="36" height="36" fill="none" stroke="#b68235" stroke-width="1.4"></rect><rect x="330" y="192" width="9" height="9" fill="#b68235"></rect><g stroke="#c28d41" stroke-width="1"><line x1="330" y1="196.5" x2="304" y2="196.5"></line></g><text x="299" y="200.5" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">one thread</text><text x="590" y="94" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">Q — on device</text><path d="M 590 128 L 590 122 L 710 122 L 710 128" fill="none" stroke="#a8a3a3"></path><text x="650" y="116" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">d_model</text><g fill="none" stroke="#c28d41" stroke-width="1"><path d="M 590 162 L 572 162 L 572 112 L 348 112 L 348 189" marker-end="url(#fa-arrow)"></path><path d="M 590 202 L 560 202 L 560 120 L 384 120 L 384 189" marker-end="url(#fa-arrow)"></path><path d="M 590 242 L 548 242 L 548 128 L 420 128 L 420 189" marker-end="url(#fa-arrow)"></path><path d="M 590 282 L 536 282 L 536 136 L 456 136 L 456 189" marker-end="url(#fa-arrow)"></path></g><rect x="590" y="142" width="120" height="160" fill="#fbeedb"></rect><g stroke="#e8e5e5" stroke-width="0.7"><line x1="590" y1="152" x2="710" y2="152"></line><line x1="590" y1="162" x2="710" y2="162"></line><line x1="590" y1="172" x2="710" y2="172"></line><line x1="590" y1="192" x2="710" y2="192"></line><line x1="590" y1="202" x2="710" y2="202"></line><line x1="590" y1="212" x2="710" y2="212"></line><line x1="590" y1="232" x2="710" y2="232"></line><line x1="590" y1="242" x2="710" y2="242"></line><line x1="590" y1="252" x2="710" y2="252"></line><line x1="590" y1="272" x2="710" y2="272"></line><line x1="590" y1="282" x2="710" y2="282"></line><line x1="590" y1="292" x2="710" y2="292"></line><line x1="600" y1="142" x2="600" y2="302"></line><line x1="610" y1="142" x2="610" y2="302"></line><line x1="620" y1="142" x2="620" y2="302"></line><line x1="630" y1="142" x2="630" y2="302"></line><line x1="640" y1="142" x2="640" y2="302"></line><line x1="650" y1="142" x2="650" y2="302"></line><line x1="660" y1="142" x2="660" y2="302"></line><line x1="670" y1="142" x2="670" y2="302"></line><line x1="680" y1="142" x2="680" y2="302"></line><line x1="690" y1="142" x2="690" y2="302"></line><line x1="700" y1="142" x2="700" y2="302"></line></g><rect x="590" y="142" width="120" height="40" fill="none" stroke="#b68235" stroke-width="1.4"></rect><rect x="590" y="182" width="120" height="40" fill="none" stroke="#b68235" stroke-width="1.4"></rect><rect x="590" y="222" width="120" height="40" fill="none" stroke="#b68235" stroke-width="1.4"></rect><rect x="590" y="262" width="120" height="40" fill="none" stroke="#b68235" stroke-width="1.4"></rect><path d="M 716 145 L 722 145 L 722 179 L 716 179" fill="none" stroke="#b68235"></path><text x="728" y="166" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">Br</text><text x="750" y="166" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 0</text><path d="M 716 185 L 722 185 L 722 219 L 716 219" fill="none" stroke="#b68235"></path><text x="728" y="206" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">Br</text><text x="750" y="206" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 1</text><path d="M 716 225 L 722 225 L 722 259 L 716 259" fill="none" stroke="#b68235"></path><text x="728" y="246" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">Br</text><text x="750" y="246" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 2</text><path d="M 716 265 L 722 265 L 722 299 L 716 299" fill="none" stroke="#b68235"></path><text x="728" y="286" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">Br</text><text x="750" y="286" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 3</text><text x="348" y="214" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 10.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 0</text><text x="384" y="214" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 10.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 1</text><text x="420" y="214" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 10.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 2</text><text x="456" y="214" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 10.5px; font-feature-settings: 'tnum'; fill: #7d5411;">tg 3</text><text x="590" y="324" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">row block i stays resident</text><text x="590" y="339" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">in threadgroup i</text><text x="50" y="42" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">K — on device</text><path d="M 50 66 L 50 60 L 170 60 L 170 66" fill="none" stroke="#a8a3a3"></path><text x="110" y="55" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">d_model</text><g opacity="1"><rect x="50" y="72" width="120" height="30" fill="#fbeedb"></rect><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="82" x2="170" y2="82"></line><line x1="50" y1="92" x2="170" y2="92"></line><line x1="60" y1="72" x2="60" y2="102"></line><line x1="70" y1="72" x2="70" y2="102"></line><line x1="80" y1="72" x2="80" y2="102"></line><line x1="90" y1="72" x2="90" y2="102"></line><line x1="100" y1="72" x2="100" y2="102"></line><line x1="110" y1="72" x2="110" y2="102"></line><line x1="120" y1="72" x2="120" y2="102"></line><line x1="130" y1="72" x2="130" y2="102"></line><line x1="140" y1="72" x2="140" y2="102"></line><line x1="150" y1="72" x2="150" y2="102"></line><line x1="160" y1="72" x2="160" y2="102"></line></g><rect x="50" y="72" width="120" height="30" fill="none" stroke="#b68235" stroke-width="2"></rect></g><path d="M 44 75 L 38 75 L 38 99 L 44 99" fill="none" stroke="#b68235"></path><text x="33" y="91" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">Bc</text><g opacity="0.6"><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="112" x2="170" y2="112"></line><line x1="50" y1="122" x2="170" y2="122"></line><line x1="60" y1="102" x2="60" y2="132"></line><line x1="70" y1="102" x2="70" y2="132"></line><line x1="80" y1="102" x2="80" y2="132"></line><line x1="90" y1="102" x2="90" y2="132"></line><line x1="100" y1="102" x2="100" y2="132"></line><line x1="110" y1="102" x2="110" y2="132"></line><line x1="120" y1="102" x2="120" y2="132"></line><line x1="130" y1="102" x2="130" y2="132"></line><line x1="140" y1="102" x2="140" y2="132"></line><line x1="150" y1="102" x2="150" y2="132"></line><line x1="160" y1="102" x2="160" y2="132"></line></g><rect x="50" y="102" width="120" height="30" fill="none" stroke="#6f6b6b" stroke-width="2"></rect></g><g opacity="0.6"><path d="M 44 105 L 38 105 L 38 129 L 44 129" fill="none" stroke="#8f8a8a"></path><text x="33" y="121" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">Bc</text></g><g opacity="0.35"><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="142" x2="170" y2="142"></line><line x1="50" y1="152" x2="170" y2="152"></line><line x1="60" y1="132" x2="60" y2="162"></line><line x1="70" y1="132" x2="70" y2="162"></line><line x1="80" y1="132" x2="80" y2="162"></line><line x1="90" y1="132" x2="90" y2="162"></line><line x1="100" y1="132" x2="100" y2="162"></line><line x1="110" y1="132" x2="110" y2="162"></line><line x1="120" y1="132" x2="120" y2="162"></line><line x1="130" y1="132" x2="130" y2="162"></line><line x1="140" y1="132" x2="140" y2="162"></line><line x1="150" y1="132" x2="150" y2="162"></line><line x1="160" y1="132" x2="160" y2="162"></line></g><rect x="50" y="132" width="120" height="30" fill="none" stroke="#6f6b6b" stroke-width="2"></rect></g><g opacity="0.35"><path d="M 44 135 L 38 135 L 38 159 L 44 159" fill="none" stroke="#8f8a8a"></path><text x="33" y="151" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">Bc</text></g><g opacity="0.3" mask="url(#fa-fade)"><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="172" x2="170" y2="172"></line><line x1="50" y1="182" x2="170" y2="182"></line><line x1="60" y1="162" x2="60" y2="192"></line><line x1="70" y1="162" x2="70" y2="192"></line><line x1="80" y1="162" x2="80" y2="192"></line><line x1="90" y1="162" x2="90" y2="192"></line><line x1="100" y1="162" x2="100" y2="192"></line><line x1="110" y1="162" x2="110" y2="192"></line><line x1="120" y1="162" x2="120" y2="192"></line><line x1="130" y1="162" x2="130" y2="192"></line><line x1="140" y1="162" x2="140" y2="192"></line><line x1="150" y1="162" x2="150" y2="192"></line><line x1="160" y1="162" x2="160" y2="192"></line></g><rect x="50" y="162" width="120" height="30" fill="none" stroke="#6f6b6b" stroke-width="2"></rect></g><g opacity="0.3" mask="url(#fa-fade)"><path d="M 44 165 L 38 165 L 38 189 L 44 189" fill="none" stroke="#8f8a8a"></path><text x="33" y="181" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">Bc</text></g><text x="50" y="222" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase; fill: #7d7979;">V — on device</text><path d="M 50 246 L 50 240 L 170 240 L 170 246" fill="none" stroke="#a8a3a3"></path><text x="110" y="235" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">d_model</text><g opacity="1"><rect x="50" y="252" width="120" height="30" fill="#fbeedb"></rect><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="262" x2="170" y2="262"></line><line x1="50" y1="272" x2="170" y2="272"></line><line x1="60" y1="252" x2="60" y2="282"></line><line x1="70" y1="252" x2="70" y2="282"></line><line x1="80" y1="252" x2="80" y2="282"></line><line x1="90" y1="252" x2="90" y2="282"></line><line x1="100" y1="252" x2="100" y2="282"></line><line x1="110" y1="252" x2="110" y2="282"></line><line x1="120" y1="252" x2="120" y2="282"></line><line x1="130" y1="252" x2="130" y2="282"></line><line x1="140" y1="252" x2="140" y2="282"></line><line x1="150" y1="252" x2="150" y2="282"></line><line x1="160" y1="252" x2="160" y2="282"></line></g><rect x="50" y="252" width="120" height="30" fill="none" stroke="#b68235" stroke-width="2"></rect></g><path d="M 44 255 L 38 255 L 38 279 L 44 279" fill="none" stroke="#b68235"></path><text x="33" y="271" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #7d5411;">Bc</text><g opacity="0.6"><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="292" x2="170" y2="292"></line><line x1="50" y1="302" x2="170" y2="302"></line><line x1="60" y1="282" x2="60" y2="312"></line><line x1="70" y1="282" x2="70" y2="312"></line><line x1="80" y1="282" x2="80" y2="312"></line><line x1="90" y1="282" x2="90" y2="312"></line><line x1="100" y1="282" x2="100" y2="312"></line><line x1="110" y1="282" x2="110" y2="312"></line><line x1="120" y1="282" x2="120" y2="312"></line><line x1="130" y1="282" x2="130" y2="312"></line><line x1="140" y1="282" x2="140" y2="312"></line><line x1="150" y1="282" x2="150" y2="312"></line><line x1="160" y1="282" x2="160" y2="312"></line></g><rect x="50" y="282" width="120" height="30" fill="none" stroke="#6f6b6b" stroke-width="2"></rect></g><g opacity="0.6"><path d="M 44 285 L 38 285 L 38 309 L 44 309" fill="none" stroke="#8f8a8a"></path><text x="33" y="301" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">Bc</text></g><g opacity="0.35"><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="322" x2="170" y2="322"></line><line x1="50" y1="332" x2="170" y2="332"></line><line x1="60" y1="312" x2="60" y2="342"></line><line x1="70" y1="312" x2="70" y2="342"></line><line x1="80" y1="312" x2="80" y2="342"></line><line x1="90" y1="312" x2="90" y2="342"></line><line x1="100" y1="312" x2="100" y2="342"></line><line x1="110" y1="312" x2="110" y2="342"></line><line x1="120" y1="312" x2="120" y2="342"></line><line x1="130" y1="312" x2="130" y2="342"></line><line x1="140" y1="312" x2="140" y2="342"></line><line x1="150" y1="312" x2="150" y2="342"></line><line x1="160" y1="312" x2="160" y2="342"></line></g><rect x="50" y="312" width="120" height="30" fill="none" stroke="#6f6b6b" stroke-width="2"></rect></g><g opacity="0.35"><path d="M 44 315 L 38 315 L 38 339 L 44 339" fill="none" stroke="#8f8a8a"></path><text x="33" y="331" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">Bc</text></g><g opacity="0.3" mask="url(#fa-fade)"><g stroke="#e8e5e5" stroke-width="0.45"><line x1="50" y1="352" x2="170" y2="352"></line><line x1="50" y1="362" x2="170" y2="362"></line><line x1="60" y1="342" x2="60" y2="372"></line><line x1="70" y1="342" x2="70" y2="372"></line><line x1="80" y1="342" x2="80" y2="372"></line><line x1="90" y1="342" x2="90" y2="372"></line><line x1="100" y1="342" x2="100" y2="372"></line><line x1="110" y1="342" x2="110" y2="372"></line><line x1="120" y1="342" x2="120" y2="372"></line><line x1="130" y1="342" x2="130" y2="372"></line><line x1="140" y1="342" x2="140" y2="372"></line><line x1="150" y1="342" x2="150" y2="372"></line><line x1="160" y1="342" x2="160" y2="372"></line></g><rect x="50" y="342" width="120" height="30" fill="none" stroke="#6f6b6b" stroke-width="2"></rect></g><g opacity="0.3" mask="url(#fa-fade)"><path d="M 44 345 L 38 345 L 38 369 L 44 369" fill="none" stroke="#8f8a8a"></path><text x="33" y="361" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 12px; font-feature-settings: 'tnum'; fill: #605d5d;">Bc</text></g><text x="50" y="392" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">block j = 0, 1, 2 … streamed in one per loop</text><text x="50" y="407" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">iteration, overwriting the last</text><g fill="none" stroke="#c28d41" stroke-width="1"><path d="M 174 87 L 200 87 L 200 252"></path><path d="M 174 267 L 200 267 L 200 252"></path><path d="M 200 252 L 456 252"></path><path d="M 348 252 L 348 231" marker-end="url(#fa-arrow)"></path><path d="M 384 252 L 384 231" marker-end="url(#fa-arrow)"></path><path d="M 420 252 L 420 231" marker-end="url(#fa-arrow)"></path><path d="M 456 252 L 456 231" marker-end="url(#fa-arrow)"></path></g><path d="M 174 117 L 200 117" fill="none" stroke="#c28d41" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"></path><path d="M 174 147 L 200 147" fill="none" stroke="#c28d41" stroke-width="1" stroke-dasharray="3 3" opacity="0.2"></path><path d="M 174 297 L 200 297" fill="none" stroke="#c28d41" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"></path><path d="M 174 327 L 200 327" fill="none" stroke="#c28d41" stroke-width="1" stroke-dasharray="3 3" opacity="0.2"></path><text x="402" y="270" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #605d5d;">the same K<tspan dy="3" font-size="8.5">j</tspan><tspan dy="-3"> and V</tspan><tspan dy="3" font-size="8.5">j</tspan><tspan dy="-3"> go to every threadgroup</tspan></text><path d="M 200 297 L 200 267" fill="none" stroke="#c28d41" stroke-width="1" stroke-dasharray="3 3" opacity="0.45"></path><path d="M 200 327 L 200 297" fill="none" stroke="#c28d41" stroke-width="1" stroke-dasharray="3 3" opacity="0.2"></path>
+  </svg>
+  <figcaption style="margin-top: 1.1rem; color: #4a4746; border-top: 1px solid #ddd9d9; padding-top: 0.9rem;">
+    <div style="font-family: 'Cormorant Garamond', Georgia, serif; font-style: italic; font-size: 1.25em; color: #201f1d; margin-bottom: 0.5rem;">Tiling Q, K and V into threadgroup memory</div>
+    Each threadgroup loads one Br-row block of Q once and keeps it. K and V are walked in Bc-row blocks, one pair per loop iteration.
+  </figcaption>
+</figure>
+
+    <h3 id="qkt-scoring">Scoring: Q &middot; K<sup>T</sup>, one row at a time</h3>
+    <p>
+      Once a threadgroup has its <code>Br</code>-row block of <code>Q</code>
+      cached, and the current iteration's <code>Bc</code>-row block of
+      <code>K</code> loaded, the first real computation is the same
+      <code>Q &middot; K<sup>T</sup></code> product from Part 1, just run
+      over this iteration's narrow slice instead of the full row.
+    </p>
+
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem 2rem; margin: 2.5rem 0;">
+  <figure id="fig-flash-thread-tile" style="flex: 1 1 340px; margin: 0;">
+    <svg viewBox="0 0 644 273" style="width: 100%; height: auto; display: block;" role="img" aria-label="One thread's tile calculation: a row of the Q tile multiplied with the K transpose tile fills one row of the S tile, the top-left tile of the full S matrix. The rest of that S row is faintly tinted, as are the tiles below in the same column. A vertical threadgroup barrier at the tile's right edge halts work before the next column. The row feeds its max and running sum.">
+      <defs><marker id="qk-a" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M 0 0 L 8 4 L 0 8" fill="none" stroke="#b68235" stroke-width="1.2"></path></marker></defs>
+      <text x="20" y="44" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 13px; fill: #201f1d; font-style: italic;">Q</text><rect x="20" y="72" width="128" height="16" fill="#fbeedb" stroke="none" stroke-width="0"></rect><g stroke="#e8e5e5" stroke-width="0.6"><line x1="20" y1="72" x2="148" y2="72"></line><line x1="20" y1="88" x2="148" y2="88"></line><line x1="20" y1="104" x2="148" y2="104"></line><line x1="36" y1="56" x2="36" y2="120"></line><line x1="52" y1="56" x2="52" y2="120"></line><line x1="68" y1="56" x2="68" y2="120"></line><line x1="84" y1="56" x2="84" y2="120"></line><line x1="100" y1="56" x2="100" y2="120"></line><line x1="116" y1="56" x2="116" y2="120"></line><line x1="132" y1="56" x2="132" y2="120"></line></g><rect x="20" y="56" width="128" height="64" fill="none" stroke="#8f8a8a" stroke-width="1.2"></rect><rect x="20" y="72" width="128" height="16" fill="none" stroke="#b68235" stroke-width="1.4"></rect><text x="168" y="94" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 22px; fill: #3d3a39;">&middot;</text><text x="188" y="14" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 13px; fill: #201f1d; font-style: italic;">K<tspan dy="-6" style="font-size: 0.7em;">T</tspan></text><rect x="188" y="24" width="64" height="128" fill="#fbeedb" stroke="none" stroke-width="0"></rect><g stroke="#e8e5e5" stroke-width="0.6"><line x1="188" y1="40" x2="252" y2="40"></line><line x1="188" y1="56" x2="252" y2="56"></line><line x1="188" y1="72" x2="252" y2="72"></line><line x1="188" y1="88" x2="252" y2="88"></line><line x1="188" y1="104" x2="252" y2="104"></line><line x1="188" y1="120" x2="252" y2="120"></line><line x1="188" y1="136" x2="252" y2="136"></line><line x1="204" y1="24" x2="204" y2="152"></line><line x1="220" y1="24" x2="220" y2="152"></line><line x1="236" y1="24" x2="236" y2="152"></line></g><rect x="188" y="24" width="64" height="128" fill="none" stroke="#8f8a8a" stroke-width="1.2"></rect><rect x="188" y="24" width="64" height="128" fill="none" stroke="#b68235" stroke-width="1.4"></rect><text x="274" y="94" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 20px; fill: #3d3a39;">=</text><text x="376" y="55" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 13px; fill: #201f1d; font-style: italic;">S</text><rect x="296" y="105" width="40" height="40" fill="#fdf6ec" stroke="none" stroke-width="0"></rect><rect x="296" y="145" width="40" height="40" fill="#fdf6ec" stroke="none" stroke-width="0"></rect><rect x="296" y="185" width="40" height="40" fill="#fdf6ec" stroke="none" stroke-width="0"></rect><rect x="336" y="75" width="120" height="10" fill="#fcf1e1" stroke="none" stroke-width="0"></rect><g stroke="#f1efef" stroke-width="0.5"><line x1="296" y1="75" x2="456" y2="75"></line><line x1="306" y1="65" x2="306" y2="225"></line><line x1="296" y1="85" x2="456" y2="85"></line><line x1="316" y1="65" x2="316" y2="225"></line><line x1="296" y1="95" x2="456" y2="95"></line><line x1="326" y1="65" x2="326" y2="225"></line><line x1="296" y1="115" x2="456" y2="115"></line><line x1="346" y1="65" x2="346" y2="225"></line><line x1="296" y1="125" x2="456" y2="125"></line><line x1="356" y1="65" x2="356" y2="225"></line><line x1="296" y1="135" x2="456" y2="135"></line><line x1="366" y1="65" x2="366" y2="225"></line><line x1="296" y1="155" x2="456" y2="155"></line><line x1="386" y1="65" x2="386" y2="225"></line><line x1="296" y1="165" x2="456" y2="165"></line><line x1="396" y1="65" x2="396" y2="225"></line><line x1="296" y1="175" x2="456" y2="175"></line><line x1="406" y1="65" x2="406" y2="225"></line><line x1="296" y1="195" x2="456" y2="195"></line><line x1="426" y1="65" x2="426" y2="225"></line><line x1="296" y1="205" x2="456" y2="205"></line><line x1="436" y1="65" x2="436" y2="225"></line><line x1="296" y1="215" x2="456" y2="215"></line><line x1="446" y1="65" x2="446" y2="225"></line></g><g stroke="#e3e0e0" stroke-width="0.8"><line x1="296" y1="105" x2="456" y2="105"></line><line x1="336" y1="65" x2="336" y2="225"></line><line x1="296" y1="145" x2="456" y2="145"></line><line x1="376" y1="65" x2="376" y2="225"></line><line x1="296" y1="185" x2="456" y2="185"></line><line x1="416" y1="65" x2="416" y2="225"></line></g><rect x="296" y="65" width="160" height="160" fill="none" stroke="#d7d3d3" stroke-width="1"></rect><rect x="296" y="105" width="40" height="40" fill="none" stroke="#e2c9a3" stroke-width="1"></rect><rect x="296" y="145" width="40" height="40" fill="none" stroke="#e2c9a3" stroke-width="1"></rect><rect x="296" y="185" width="40" height="40" fill="none" stroke="#e2c9a3" stroke-width="1"></rect><rect x="336" y="75" width="120" height="10" fill="none" stroke="#ecd3ad" stroke-width="1"></rect><rect x="296" y="65" width="40" height="40" fill="#f3f2f2" stroke="none" stroke-width="0"></rect><rect x="296" y="75" width="40" height="10" fill="#fbeedb" stroke="none" stroke-width="0"></rect><g stroke="#e8e5e5" stroke-width="0.6"><line x1="296" y1="75" x2="336" y2="75"></line><line x1="296" y1="85" x2="336" y2="85"></line><line x1="296" y1="95" x2="336" y2="95"></line><line x1="306" y1="65" x2="306" y2="105"></line><line x1="316" y1="65" x2="316" y2="105"></line><line x1="326" y1="65" x2="326" y2="105"></line></g><rect x="296" y="65" width="40" height="40" fill="none" stroke="#8f8a8a" stroke-width="1.2"></rect><rect x="296" y="75" width="40" height="10" fill="none" stroke="#b68235" stroke-width="1.6"></rect><path d="M 326 61 L 316 51" stroke="#8f8a8a" stroke-width="0.8"></path><text x="313" y="50" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; fill: #605d5d;">S tile</text><g stroke="#a8a3a3" stroke-width="1.6"><line x1="344" y1="59" x2="344" y2="231"></line><line x1="339" y1="59" x2="349" y2="59"></line><line x1="339" y1="231" x2="349" y2="231"></line></g><text x="344" y="249" text-anchor="start" dx="-12" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; fill: #605d5d;">threadgroup barrier <tspan style="font-style: italic; fill: #605d5d;">&middot; halt</tspan></text><path d="M 460 80 C 486 80, 486 54, 514 54" fill="none" stroke="#c28d41" stroke-width="1" marker-end="url(#qk-a)"></path><path d="M 460 80 C 486 80, 486 106, 514 106" fill="none" stroke="#c28d41" stroke-width="1" marker-end="url(#qk-a)"></path><rect x="520" y="42" width="24" height="24" fill="#fbeedb" stroke="#b68235" stroke-width="1.4"></rect><text x="554" y="58.5" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 13px; fill: #201f1d;">max</text><rect x="520" y="94" width="24" height="24" fill="#fbeedb" stroke="#b68235" stroke-width="1.4"></rect><text x="554" y="110.5" text-anchor="start" style="font-family: 'Lora', Georgia, serif; font-size: 13px; fill: #201f1d;">running sum</text>
+    </svg>
+  </figure>
+  <div style="flex: 1 1 260px; font-family: var(--serif); font-size: 16px; line-height: 1.65; color: var(--ink);">
+    It's a plain GEMV: one row of the cached <code>Q</code> tile, a single
+    query vector, multiplied against the whole cached <code>K</code> tile,
+    producing that row's fresh scores for this iteration. The raw dot
+    product only gets normalized by <code>&radic;d_model</code> once it's
+    fully summed, not on every multiply inside the loop, the same scaling
+    from Part 1, just applied at the end of a shorter reduction now. Those
+    scaled scores feed straight into that row's running max and
+    exponentiated sum from Section 2, there's no separate step for it.
+  </div>
+</div>
+
+    <p>
+      Once the scores are in, there's a threadgroup barrier: every thread
+      halts until this iteration's whole tile of <code>S</code> is actually
+      finished, not just its own row. The next step reads across a row's
+      scores, and those were written by several different threads, so
+      nobody can move on until all of them have landed.
+    </p>
+
+    <p>
+      Then it's on to the next tile: the next <code>Bc</code>-row block of
+      <code>K</code> and <code>V</code> loads in, and the same row-by-row
+      scoring happens again. If this new tile pushes a row's running max
+      higher, everything already accumulated for that row, the running sum
+      and the output being built up alongside it, gets rescaled by the
+      correction factor before the new scores are folded in. If the max
+      didn't move, the correction factor still gets computed, it's just
+      <code>e^(max&minus;max) = 1</code>, a no-op. There's no special case
+      for "did the max change": the same multiply runs every iteration, it
+      only does real work when it needs to.
+    </p>
+
+    <p>
+      That same correction step is also where <code>V</code> comes in: this
+      iteration's scores get multiplied against <code>V</code> and folded
+      into a running output, rescaled by the exact same correction factor
+      as the sum. By the time the loop ends, that running output isn't just
+      bookkeeping, it's the actual attention output, one final division by
+      the row's total sum away from done.
+    </p>
+
+<!--
+  Flash-attention S loop animation (Distill). Paste the <figure> block into the <d-article> body.
+  Self-contained: inline SVG + a small inline script. Transparent background. Respects prefers-reduced-motion.
+-->
+<figure class="l-page" id="fig-flash-s-loop" style="margin: 2.5rem 0;">
+  <svg viewBox="0 0 334 314" style="width: 100%; max-width: 380px; height: auto; display: block; margin: 0 auto;" role="img" aria-label="The S matrix filled one column of tiles at a time: on loop iteration j, every threadgroup computes its tile in column j, then a threadgroup barrier moves one column to the right, and a highlight sweeps left to right across all earlier tiles as they are rescaled by the correction factor.">
+    <rect class="fa-col" data-j="0" x="40" y="56" width="56" height="224" fill="#fbeedb" opacity="0" style="transition: opacity 0.45s ease;"></rect><rect class="fa-col" data-j="1" x="96" y="56" width="56" height="224" fill="#fbeedb" opacity="0" style="transition: opacity 0.45s ease;"></rect><rect class="fa-col" data-j="2" x="152" y="56" width="56" height="224" fill="#fbeedb" opacity="0" style="transition: opacity 0.45s ease;"></rect><rect class="fa-col" data-j="3" x="208" y="56" width="56" height="224" fill="#fbeedb" opacity="0" style="transition: opacity 0.45s ease;"></rect><rect id="fa-sweep" x="40" y="56" width="0" height="224" fill="#f2d3c4" opacity="0"></rect><line id="fa-sweep-edge" x1="40" y1="56" x2="40" y2="280" stroke="#9a3f1c" stroke-width="1.4" opacity="0"></line><g stroke="#3d3a39" stroke-opacity="0.16" stroke-width="0.6"><line x1="40" y1="70" x2="264" y2="70"></line><line x1="54" y1="56" x2="54" y2="280"></line><line x1="40" y1="84" x2="264" y2="84"></line><line x1="68" y1="56" x2="68" y2="280"></line><line x1="40" y1="98" x2="264" y2="98"></line><line x1="82" y1="56" x2="82" y2="280"></line><line x1="40" y1="126" x2="264" y2="126"></line><line x1="110" y1="56" x2="110" y2="280"></line><line x1="40" y1="140" x2="264" y2="140"></line><line x1="124" y1="56" x2="124" y2="280"></line><line x1="40" y1="154" x2="264" y2="154"></line><line x1="138" y1="56" x2="138" y2="280"></line><line x1="40" y1="182" x2="264" y2="182"></line><line x1="166" y1="56" x2="166" y2="280"></line><line x1="40" y1="196" x2="264" y2="196"></line><line x1="180" y1="56" x2="180" y2="280"></line><line x1="40" y1="210" x2="264" y2="210"></line><line x1="194" y1="56" x2="194" y2="280"></line><line x1="40" y1="238" x2="264" y2="238"></line><line x1="222" y1="56" x2="222" y2="280"></line><line x1="40" y1="252" x2="264" y2="252"></line><line x1="236" y1="56" x2="236" y2="280"></line><line x1="40" y1="266" x2="264" y2="266"></line><line x1="250" y1="56" x2="250" y2="280"></line></g><g stroke="#3d3a39" stroke-opacity="0.32" stroke-width="1"><line x1="40" y1="112" x2="264" y2="112"></line><line x1="96" y1="56" x2="96" y2="280"></line><line x1="40" y1="168" x2="264" y2="168"></line><line x1="152" y1="56" x2="152" y2="280"></line><line x1="40" y1="224" x2="264" y2="224"></line><line x1="208" y1="56" x2="208" y2="280"></line></g><rect x="40" y="56" width="224" height="224" fill="none" stroke="#8f8a8a" stroke-width="1.2"></rect><rect class="fa-edge" data-j="0" x="40" y="56" width="56" height="224" fill="none" stroke="#b68235" stroke-width="1.6" opacity="0" style="transition: opacity 0.45s ease;"></rect><rect class="fa-edge" data-j="1" x="96" y="56" width="56" height="224" fill="none" stroke="#b68235" stroke-width="1.6" opacity="0" style="transition: opacity 0.45s ease;"></rect><rect class="fa-edge" data-j="2" x="152" y="56" width="56" height="224" fill="none" stroke="#b68235" stroke-width="1.6" opacity="0" style="transition: opacity 0.45s ease;"></rect><rect class="fa-edge" data-j="3" x="208" y="56" width="56" height="224" fill="none" stroke="#b68235" stroke-width="1.6" opacity="0" style="transition: opacity 0.45s ease;"></rect><text class="fa-lab" data-j="0" x="68" y="46" text-anchor="middle" opacity="0.35" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411; transition: opacity 0.45s ease;">j = 0</text><text class="fa-lab" data-j="1" x="124" y="46" text-anchor="middle" opacity="0.35" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411; transition: opacity 0.45s ease;">j = 1</text><text class="fa-lab" data-j="2" x="180" y="46" text-anchor="middle" opacity="0.35" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411; transition: opacity 0.45s ease;">j = 2</text><text class="fa-lab" data-j="3" x="236" y="46" text-anchor="middle" opacity="0.35" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; font-feature-settings: 'tnum'; fill: #7d5411; transition: opacity 0.45s ease;">j = 3</text><text x="32" y="88" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 11px; font-feature-settings: 'tnum'; fill: #7d7979;">tg 0</text><text x="32" y="144" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 11px; font-feature-settings: 'tnum'; fill: #7d7979;">tg 1</text><text x="32" y="200" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 11px; font-feature-settings: 'tnum'; fill: #7d7979;">tg 2</text><text x="32" y="256" text-anchor="end" style="font-family: 'Lora', Georgia, serif; font-size: 11px; font-feature-settings: 'tnum'; fill: #7d7979;">tg 3</text><g id="fa-barrier" style="transition: transform 0.6s ease; transform: translateX(0px);"><g stroke="#a8a3a3" stroke-width="1.6"><line x1="102" y1="52" x2="102" y2="284"></line><line x1="97" y1="52" x2="107" y2="52"></line><line x1="97" y1="284" x2="107" y2="284"></line></g><text x="110" y="300" text-anchor="middle" style="font-family: 'Lora', Georgia, serif; font-size: 11px; fill: #605d5d;">threadgroup barrier</text></g><text id="fa-corr" x="264" y="26" text-anchor="end" opacity="0" style="font-family: 'Lora', Georgia, serif; font-size: 11.5px; fill: #9a3f1c; transition: opacity 0.3s ease;">× correction factor</text><text x="40" y="26" style="font-family: 'Lora', Georgia, serif; font-size: 15px; font-style: italic; fill: #201f1d;">S</text>
+  </svg>
+  <script>
+  (function(){
+    var fig=document.getElementById('fig-flash-s-loop');
+    var cols=fig.querySelectorAll('.fa-col'),edges=fig.querySelectorAll('.fa-edge'),labs=fig.querySelectorAll('.fa-lab');
+    var bar=fig.querySelector('#fa-barrier'),sw=fig.querySelector('#fa-sweep'),se=fig.querySelector('#fa-sweep-edge'),corr=fig.querySelector('#fa-corr');
+    var T=56,X0=40,timers=[];
+    function show(j){
+      for(var k=0;k<4;k++){
+        cols[k].setAttribute('opacity', k<j?'0.45':(k===j?'1':'0'));
+        edges[k].setAttribute('opacity', k===j?'1':'0');
+        labs[k].setAttribute('opacity', k===j?'1':'0.35');
+      }
+      bar.style.transform='translateX('+(j*T)+'px)';
+    }
+    function clear(){for(var k=0;k<4;k++){cols[k].setAttribute('opacity','0');edges[k].setAttribute('opacity','0');labs[k].setAttribute('opacity','0.35');}bar.style.transform='translateX(0px)';}
+    function sweepTo(w,dur,done){
+      var t0=null;sw.setAttribute('opacity','0.9');se.setAttribute('opacity','1');corr.setAttribute('opacity','1');
+      function f(t){if(t0===null)t0=t;var p=Math.min(1,(t-t0)/dur);var e=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;var x=w*e;
+        sw.setAttribute('width',x);se.setAttribute('x1',X0+x);se.setAttribute('x2',X0+x);
+        if(p<1)requestAnimationFrame(f);else setTimeout(function(){sw.setAttribute('opacity','0');se.setAttribute('opacity','0');corr.setAttribute('opacity','0');sw.setAttribute('width',0);done&&done();},350);}
+      requestAnimationFrame(f);
+    }
+    if(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches){show(3);return;}
+    function run(j){
+      if(j===4){clear();setTimeout(function(){run(0);},900);return;}
+      show(j);
+      if(j===0){setTimeout(function(){run(1);},1500);return;}
+      setTimeout(function(){sweepTo(j*T,900,function(){setTimeout(function(){run(j+1);},400);});},700);
+    }
+    run(0);
+  })();
+  </script>
+  <figcaption style="margin-top: 1.1rem; color: #4a4746; border-top: 1px solid #ddd9d9; padding-top: 0.9rem; font-family: var(--sans); font-size: 13px; line-height: 1.6;">
+    One column of <code>S</code> tiles per loop iteration. The barrier moves right, then a sweep rescales every earlier tile by the correction factor before the next column starts.
+  </figcaption>
+</figure>
+
+    <p>
+      That's the full loop: load once, score and barrier, correct and fold,
+      repeat, until every key has been seen and the running totals are
+      exact. The kernel itself (<code>attention-kernels/flash-attention</code>
+      in <a href="https://github.com/PrabhuMane93/metal-llm-kernels">metal-llm-kernels</a>)
+      verifies against the same PyTorch reference as Part 1, to the same
+      <code>max_abs_error &approx; 3.725e-9</code>, as accurate as
+      materializing the whole row, without ever holding more than one
+      <code>Br &times; Bc</code> tile in memory. Still ahead: the
+      thread-level mechanics underneath this row-by-row picture, how one
+      flat thread index gets reinterpreted across the load, score,
+      softmax-update, and output-fold phases of a single iteration, and why
+      the barriers between them each guard a specific cross-thread read.
+    </p>
+
+  </div>
+
+  <div class="article-col back-link">
+    <a href="/blogs/">&larr; Back to all posts</a>
+  </div>
+
+</main>
+
+<footer>
+  <div class="article-wrap">
+    <p>&copy; 2026 Prabhu Mane</p>
+  </div>
+</footer>
+
+</body>
+</html>
